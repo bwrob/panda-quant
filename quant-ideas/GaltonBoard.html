@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Galton Board Simulation with Skewed p</title>
+    <!-- Include MathJax for rendering mathematical formulas -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async
+            src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f9f9f9;
+        }
+        /* Introduction Section Styling */
+        .intro {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        /* Controls Section Styling */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 30px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .slider-container {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            flex: 1 1 200px;
+            max-width: 300px;
+        }
+        .slider-container label { 
+            display: block; 
+            margin-bottom: 5px; 
+            font-weight: bold;
+        }
+        .slider-container input[type=range] { 
+            width: 100%; 
+        }
+        .slider-value {
+            text-align: right;
+            font-size: 0.9em;
+            color: #555;
+        }
+        /* Charts Section Styling */
+        .charts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: space-between;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .chart-box {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            flex: 1 1 100%;
+            min-width: 300px;
+            text-align: center;
+        }
+        h2, h3 { 
+            color: #333; 
+        }
+        @media (max-width: 1200px) {
+            .chart-box {
+                flex: 1 1 45%;
+            }
+        }
+        @media (max-width: 800px) {
+            .chart-box {
+                flex: 1 1 100%;
+            }
+        }
+        /* Button Styling */
+        #startButton {
+            background-color: #4285F4;
+            color: white;
+            border: none;
+            padding: 0 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #startButton:hover {
+            background-color: #3367D6;
+        }
+    </style>
+</head>
+<body>
+
+<div class="intro">
+    <h2>The Galton Board: A Historical Perspective</h2>
+    <p>
+        The <strong>Galton board</strong>, also known as the <em>quincunx</em>, was invented by Sir Francis Galton in the late 19th century. Galton was an English polymath known for his contributions to statistics, psychology, and biology. He designed the Galton board to physically demonstrate the <strong>Central Limit Theorem</strong> and the emergence of the <strong>normal distribution</strong> from a series of random events.
+    </p>
+    <p>
+        The device consists of a vertical board with a triangular array of pegs. Balls are dropped from the top and bounce randomly to the left or right as they hit each peg. As the number of balls increases, they accumulate in bins at the bottom, forming a bell-shaped curve that approximates the normal distribution.
+    </p>
+    <p>
+        Galton used this apparatus to illustrate how individual random events (the left or right bounces) can lead to a predictable overall distribution. This was a significant insight into statistical mechanics and probability theory, reinforcing the idea that the normal distribution is a natural outcome of many small, independent random variables.
+    </p>
+    <p>
+        Mathematically, as the number of levels \( n \) increases, the binomial distribution \( B(n, p) \) with probability \( p = 0.5 \) approaches the normal distribution \( N\left( \mu = np, \sigma^2 = np(1 - p) \right) \) due to the Central Limit Theorem.
+    </p>
+    <p style="text-align: center; font-style: italic;">
+        \[
+        \lim_{n \to \infty} P\left( \frac{X - np}{\sqrt{np(1 - p)}} \leq z \right) = \Phi(z)
+        \]
+    </p>
+    <p>
+        where \( X \) is the number of right turns, \( z \) is a real number, and \( \Phi(z) \) is the cumulative distribution function of the standard normal distribution.
+    </p>
+    <p>
+        Adjust the probability of success \( p \) using the slider to observe how the resulting distribution changes. When \( p = 0.5 \), the distribution is symmetric, but as \( p \) deviates from 0.5, the distribution becomes skewed. 
+    </p>
+    <p>
+        The Central Limit Theorem still applies: for a large number of levels, the distribution will approximate a normal distribution with a mean \( \mu = np \) and variance \( \sigma^2 = np(1 - p) \).
+    </p>
+</div>
+
+<div class="controls">
+    <div class="slider-container">
+        <label for="levelsSlider">Number of Levels (Pins): <span id="levelsValue">10</span></label>
+        <input type="range" id="levelsSlider" min="5" max="15" value="10">
+    </div>
+    <div class="slider-container">
+        <label for="ballsSlider">Number of Balls: <span id="ballsValue">500</span></label>
+        <input type="range" id="ballsSlider" min="100" max="1000" step="100" value="500">
+    </div>
+    <div class="slider-container">
+        <label for="probabilitySlider">Probability of Moving Right (p): <span id="probabilityValue">0.5</span></label>
+        <input type="range" id="probabilitySlider" min="0.1" max="0.9" step="0.1" value="0.5">
+    </div>
+    <button id="startButton" style="height: 40px; align-self: center;">Start Simulation</button>
+</div>
+
+<div class="charts">
+    <div class="chart-box">
+        <h3>Galton Board Animation</h3>
+        <canvas id="galtonCanvas" width="600" height="600"></canvas>
+    </div>
+    <div class="chart-box">
+        <h3>Resulting Distribution vs. Normal Approximation</h3>
+        <canvas id="distributionCanvas" width="600" height="400"></canvas>
+    </div>
+</div>
+
+<script>
+    const levelsSlider = document.getElementById('levelsSlider');
+    const ballsSlider = document.getElementById('ballsSlider');
+    const probabilitySlider = document.getElementById('probabilitySlider');
+    const levelsValue = document.getElementById('levelsValue');
+    const ballsValue = document.getElementById('ballsValue');
+    const probabilityValue = document.getElementById('probabilityValue');
+    const startButton = document.getElementById('startButton');
+    const galtonCanvas = document.getElementById('galtonCanvas');
+    const distributionCanvas = document.getElementById('distributionCanvas');
+    const galtonCtx = galtonCanvas.getContext('2d');
+    const distributionCtx = distributionCanvas.getContext('2d');
+
+    levelsValue.textContent = levelsSlider.value;
+    ballsValue.textContent = ballsSlider.value;
+    probabilityValue.textContent = probabilitySlider.value;
+
+    levelsSlider.addEventListener('input', () => {
+        levelsValue.textContent = levelsSlider.value;
+        drawGaltonBoard();
+        updateDistributionChart();
+    });
+
+    ballsSlider.addEventListener('input', () => {
+        ballsValue.textContent = ballsSlider.value;
+    });
+
+    probabilitySlider.addEventListener('input', () => {
+        probabilityValue.textContent = probabilitySlider.value;
+    });
+
+    startButton.addEventListener('click', () => {
+        startSimulation();
+    });
+
+    let pins = [];
+    let balls = [];
+    let bins = [];
+    let animationFrameId;
+    let levels, numBalls, probability;
+    let ballIndex = 0;
+    let ballReleaseInterval;
+
+    function drawGaltonBoard() {
+        levels = parseInt(levelsSlider.value);
+        galtonCtx.clearRect(0, 0, galtonCanvas.width, galtonCanvas.height);
+        pins = [];
+
+        const pinRadius = 3;
+        const pinSpacingX = galtonCanvas.width / (levels + 1);
+        const pinSpacingY = (galtonCanvas.height - 150) / (levels + 1);
+
+        // Draw pins and store their positions
+        galtonCtx.fillStyle = '#000';
+        for (let row = 0; row < levels; row++) {
+            for (let col = 0; col <= row; col++) {
+                const x = (galtonCanvas.width / 2) - (row * pinSpacingX / 2) + (col * pinSpacingX);
+                const y = 50 + row * pinSpacingY;
+                galtonCtx.beginPath();
+                galtonCtx.arc(x, y, pinRadius, 0, 2 * Math.PI);
+                galtonCtx.fill();
+                pins.push({ x, y });
+            }
+        }
+
+        // Draw bins at the bottom
+        const binWidth = galtonCanvas.width / (levels + 1);
+        galtonCtx.fillStyle = '#ccc';
+        for (let i = 0; i <= levels; i++) {
+            const x = i * binWidth;
+            const y = galtonCanvas.height - 100;
+            galtonCtx.strokeRect(x, y, binWidth, 100);
+        }
+    }
+
+    function startSimulation() {
+        cancelAnimationFrame(animationFrameId);
+        clearInterval(ballReleaseInterval);
+        levels = parseInt(levelsSlider.value);
+        numBalls = parseInt(ballsSlider.value);
+        probability = parseFloat(probabilitySlider.value);
+        bins = new Array(levels + 1).fill(0);
+        balls = [];
+        ballIndex = 0;
+
+        // Prepare all balls
+        for (let i = 0; i < numBalls; i++) {
+            balls.push({
+                x: galtonCanvas.width / 2,
+                y: 40,
+                radius: 2,
+                speed: 2,
+                dx: 0,
+                dy: 0,
+                pathIndex: -1, // Start before the first pin
+                path: generateRandomPath(levels, probability),
+                stopped: false,
+                active: false,
+                targetY: 50 // First pin level
+            });
+        }
+
+        // Release balls one at a time at a fast rate
+        ballReleaseInterval = setInterval(() => {
+            if (ballIndex < numBalls) {
+                balls[ballIndex].active = true;
+                ballIndex++;
+            } else {
+                clearInterval(ballReleaseInterval);
+            }
+        }, 10); // Adjust the interval for speed
+
+        animate();
+    }
+
+    function generateRandomPath(levels, probability) {
+        const path = [];
+        for (let i = 0; i < levels; i++) {
+            path.push(Math.random() < probability ? 1 : -1); // Skew based on the probability of going right
+        }
+        return path;
+    }
+
+    function animate() {
+        galtonCtx.clearRect(0, 0, galtonCanvas.width, galtonCanvas.height);
+        drawGaltonBoard();
+
+        let ballsInMotion = false;
+
+        // Update and draw balls
+        balls.forEach(ball => {
+            if (ball.active && !ball.stopped) {
+                ballsInMotion = true;
+
+                // Initialize movement if needed
+                if (ball.dy === 0) {
+                    if (ball.pathIndex === -1) {
+                        // Initial vertical movement to the first pin level
+                        const totalDistanceY = ball.targetY - ball.y;
+                        const distance = Math.abs(totalDistanceY);
+                        ball.dx = 0;
+                        ball.dy = (totalDistanceY / distance) * ball.speed;
+                    } else if (ball.pathIndex < ball.path.length) {
+                        // Set new targetY and calculate dx and dy for diagonal movement
+                        const prevX = ball.x;
+                        const prevY = ball.y;
+
+                        ball.targetY = 50 + (ball.pathIndex + 1) * ((galtonCanvas.height - 150) / (levels + 1));
+
+                        const totalDistanceY = ball.targetY - prevY;
+                        const horizontalShift = (galtonCanvas.width / (levels + 1)) / 2;
+                        const totalDistanceX = ball.path[ball.pathIndex] * horizontalShift;
+
+                        const distance = Math.sqrt(totalDistanceX ** 2 + totalDistanceY ** 2);
+                        ball.dx = (totalDistanceX / distance) * ball.speed;
+                        ball.dy = (totalDistanceY / distance) * ball.speed;
+                    } else {
+                        // Ball has reached the bottom
+                        ball.stopped = true;
+
+                        // Determine which bin the ball falls into
+                        const binWidth = galtonCanvas.width / (levels + 1);
+                        const binIndex = Math.min(Math.floor(ball.x / binWidth), levels);
+                        bins[binIndex]++;
+                        updateDistributionChart();
+                    }
+                }
+
+                // Move the ball towards its targetY
+                const distanceY = ball.targetY - ball.y;
+
+                if (Math.abs(distanceY) <= Math.abs(ball.dy)) {
+                    // Reached targetY
+                    ball.x += ball.dx * (Math.abs(distanceY) / Math.abs(ball.dy));
+                    ball.y = ball.targetY;
+
+                    ball.pathIndex++;
+                    ball.dy = 0; // Reset dy to trigger new movement in next frame
+                } else {
+                    // Move ball diagonally
+                    ball.x += ball.dx;
+                    ball.y += ball.dy;
+                }
+
+                // Draw the ball
+                galtonCtx.fillStyle = '#4285F4';
+                galtonCtx.beginPath();
+                galtonCtx.arc(ball.x, ball.y, ball.radius, 0, 2 * Math.PI);
+                galtonCtx.fill();
+            }
+        });
+
+        // Draw bins with accumulated balls
+        drawBins();
+
+        if (ballsInMotion || ballIndex < numBalls) {
+            animationFrameId = requestAnimationFrame(animate);
+        } else {
+            // All balls have stopped
+            clearInterval(ballReleaseInterval);
+            drawBins();
+        }
+    }
+
+    function drawBins() {
+        const binWidth = galtonCanvas.width / (levels + 1);
+        const maxBinCount = Math.max(...bins) || 1; // Avoid division by zero
+        galtonCtx.fillStyle = '#4285F4';
+
+        for (let i = 0; i <= levels; i++) {
+            const binCount = bins[i];
+            const x = i * binWidth;
+            const y = galtonCanvas.height - 100;
+            const binHeight = (binCount / maxBinCount) * 100;
+
+            galtonCtx.fillRect(x + 1, y + 100 - binHeight, binWidth - 2, binHeight);
+            galtonCtx.strokeRect(x + 1, y + 100 - binHeight, binWidth - 2, binHeight);
+        }
+    }
+
+    function updateDistributionChart() {
+        distributionCtx.clearRect(0, 0, distributionCanvas.width, distributionCanvas.height);
+
+        // Draw histogram
+        const maxBin = Math.max(...bins) || 1; // Avoid division by zero
+        const binWidth = distributionCanvas.width / bins.length;
+
+        distributionCtx.fillStyle = '#4285F4';
+        for (let i = 0; i < bins.length; i++) {
+            const binHeight = (bins[i] / maxBin) * (distributionCanvas.height - 20);
+            distributionCtx.fillRect(i * binWidth, distributionCanvas.height - binHeight, binWidth - 2, binHeight);
+        }
+
+        // Overlay normal distribution
+        distributionCtx.strokeStyle = '#DB4437';
+        distributionCtx.lineWidth = 2;
+        distributionCtx.beginPath();
+
+        const mean = levels * probability; // Adjusted mean for skewed p
+        const variance = levels * probability * (1 - probability); // Adjusted variance for skewed p
+        const stdDev = Math.sqrt(variance);
+
+        // Find the maximum value of the normal PDF for scaling
+        let maxPdfValue = normalPdf(mean, mean, stdDev);
+
+        // Scale factor to align the normal curve with the histogram
+        const scaleFactor = maxBin / maxPdfValue;
+
+        for (let x = 0; x <= distributionCanvas.width; x++) {
+            const binIndex = (x / distributionCanvas.width) * levels;
+            const pdfValue = normalPdf(binIndex, mean, stdDev);
+            const y = (pdfValue * scaleFactor) / maxBin * (distributionCanvas.height - 20);
+            const canvasY = distributionCanvas.height - y;
+
+            if (x === 0) {
+                distributionCtx.moveTo(x, canvasY);
+            } else {
+                distributionCtx.lineTo(x, canvasY);
+            }
+        }
+        distributionCtx.stroke();
+
+        // Add legend
+        distributionCtx.fillStyle = '#000';
+        distributionCtx.font = '14px Arial';
+        distributionCtx.fillText('Histogram of Balls', 10, 20);
+        distributionCtx.fillStyle = '#DB4437';
+        distributionCtx.fillText('Normal Distribution Approximation', 10, 40);
+    }
+
+    function normalPdf(x, mean, std) {
+        return (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / std, 2));
+    }
+
+    // Initialize the board and chart
+    drawGaltonBoard();
+    updateDistributionChart();
+</script>
+
+</body>
+</html>

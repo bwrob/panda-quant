@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neural Network Approximation with Cross Terms</title>
+    <style>
+        /* Complete CSS */
+
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f9f9f9;
+        }
+        /* Introduction Section Styling */
+        .intro {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        /* Controls Section Styling */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 30px;
+            align-items: center;
+        }
+        .slider-container {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            flex: 1 1 200px;
+            max-width: 300px;
+        }
+        .slider-container label { 
+            display: block; 
+            margin-bottom: 5px; 
+            font-weight: bold;
+        }
+        .slider-container input[type=range] { 
+            width: 100%; 
+        }
+        .slider-value {
+            text-align: right;
+            font-size: 0.9em;
+            color: #555;
+        }
+        /* Charts Section Styling */
+        .charts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: space-between;
+        }
+        .chart-box {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            flex: 1 1 45%;
+            min-width: 300px;
+            overflow-x: auto;
+        }
+        h2, h3 { 
+            color: #333; 
+        }
+        @media (max-width: 1200px) {
+            .chart-box {
+                flex: 1 1 45%;
+            }
+        }
+        @media (max-width: 800px) {
+            .chart-box {
+                flex: 1 1 100%;
+            }
+        }
+        /* Button Styling */
+        .controls button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        .controls button:hover {
+            background-color: #0056b3;
+        }
+        /* Weight Table Styling */
+        .weight-table {
+            font-size: 12px;
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+        .weight-table h4 {
+            margin-bottom: 5px;
+        }
+        .weight-table table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        .weight-table td, .weight-table th {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: center;
+        }
+        .weight-table th {
+            background-color: #f2f2f2;
+        }
+    </style>
+    <!-- Include Plotly.js and MathJax -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+</head>
+<body>
+
+<div class="intro">
+    <h2>Neural Network Approximation with Cross Terms</h2>
+    <p>
+        In this interactive demo, we'll explore how a neural network can approximate a complex function from ℝ³ to ℝ. The function we'll be approximating is:
+    </p>
+    <p style="text-align: center; font-size: 1.2em;">
+        \( f(x, y, z) = \sin(x) + \cos(y) + \sin(2z) \cos(x) \)
+    </p>
+    <p>
+        We include additional features such as the cross terms \( x_1x_2, x_2x_3, x_1x_3 \) to help the neural network learn the function more effectively.
+    </p>
+</div>
+
+<!-- Controls Section -->
+<div class="controls">
+    <div class="slider-container">
+        <label for="hidden-units">Hidden Units per Layer:</label>
+        <input type="range" id="hidden-units" min="1" max="20" value="5">
+        <div class="slider-value" id="hidden-units-value">5</div>
+    </div>
+    <div class="slider-container">
+        <label for="hidden-layers">Number of Hidden Layers:</label>
+        <input type="range" id="hidden-layers" min="1" max="5" value="5">
+        <div class="slider-value" id="hidden-layers-value">5</div>
+    </div>
+    <div class="slider-container">
+        <label for="learning-rate">Learning Rate:</label>
+        <input type="range" id="learning-rate" min="0.001" max="0.5" value="0.1" step="0.001">
+        <div class="slider-value" id="learning-rate-value">0.100</div>
+    </div>
+    <div class="slider-container">
+        <label for="epochs">Epochs:</label>
+        <input type="range" id="epochs" min="10" max="1000" value="100" step="10">
+        <div class="slider-value" id="epochs-value">100</div>
+    </div>
+    <div class="slider-container">
+        <label for="batch-size">Batch Size:</label>
+        <input type="range" id="batch-size" min="1" max="100" value="8" step="1">
+        <div class="slider-value" id="batch-size-value">8</div>
+    </div>
+    <!-- Buttons -->
+    <button id="train-button">Train Model</button>
+    <button id="continue-button">Continue Training</button>
+    <button id="reset-button">Reset Model</button>
+</div>
+
+<!-- Charts Section -->
+<div class="charts">
+    <div class="chart-box">
+        <h3>Training Loss</h3>
+        <div id="loss-plot"></div>
+    </div>
+    <div class="chart-box">
+        <h3>Function Approximation</h3>
+        <div id="function-plot"></div>
+    </div>
+    <div class="chart-box">
+        <h3>Weight Updates</h3>
+        <div id="weights-container"></div>
+    </div>
+</div>
+
+<script>
+    // Get elements
+    const hiddenUnitsSlider = document.getElementById('hidden-units');
+    const hiddenLayersSlider = document.getElementById('hidden-layers');
+    const learningRateSlider = document.getElementById('learning-rate');
+    const epochsSlider = document.getElementById('epochs');
+    const batchSizeSlider = document.getElementById('batch-size');
+    const hiddenUnitsValue = document.getElementById('hidden-units-value');
+    const hiddenLayersValue = document.getElementById('hidden-layers-value');
+    const learningRateValue = document.getElementById('learning-rate-value');
+    const epochsValue = document.getElementById('epochs-value');
+    const batchSizeValue = document.getElementById('batch-size-value');
+    const trainButton = document.getElementById('train-button');
+    const continueButton = document.getElementById('continue-button');
+    const resetButton = document.getElementById('reset-button');
+    const lossPlot = document.getElementById('loss-plot');
+    const functionPlot = document.getElementById('function-plot');
+    const weightsContainer = document.getElementById('weights-container');
+
+    // Update slider values
+    hiddenUnitsSlider.oninput = function() {
+        hiddenUnitsValue.innerText = this.value;
+    };
+    hiddenLayersSlider.oninput = function() {
+        hiddenLayersValue.innerText = this.value;
+    };
+    learningRateSlider.oninput = function() {
+        learningRateValue.innerText = parseFloat(this.value).toFixed(3);
+    };
+    epochsSlider.oninput = function() {
+        epochsValue.innerText = this.value;
+    };
+    batchSizeSlider.oninput = function() {
+        batchSizeValue.innerText = this.value;
+    };
+
+    // Set default values
+    hiddenLayersSlider.value = 5;
+    hiddenLayersValue.innerText = '5';
+    batchSizeSlider.value = 8;
+    batchSizeValue.innerText = '8';
+    learningRateSlider.value = 0.1;
+    learningRateValue.innerText = '0.100';
+
+    // Activation functions and their derivatives
+    function relu(x) {
+        return Math.max(0, x);
+    }
+    function reluDerivative(x) {
+        return x > 0 ? 1 : 0;
+    }
+
+    // Function to generate data
+    function generateData() {
+        const numSamples = 20000;
+        const X = [];
+        const y = [];
+        for (let i = 0; i < numSamples; i++) {
+            const x1 = Math.random() * 10 - 5; // Random between -5 and 5
+            const x2 = Math.random() * 10 - 5;
+            const x3 = Math.random() * 10 - 5;
+
+            const x1x2 = x1 * x2;
+            const x2x3 = x2 * x3;
+            const x1x3 = x1 * x3;
+
+            const f = Math.sin(x1) + Math.cos(x2) + Math.sin(2 * x3) * Math.cos(x1);
+
+            X.push([x1, x2, x3, x1x2, x2x3, x1x3]);
+            y.push(f);
+        }
+        return { X: X, y: y };
+    }
+
+    // Normalize data
+    function normalizeData(data) {
+        const X = data.X;
+        const y = data.y;
+        const numFeatures = X[0].length;
+        const XMean = new Array(numFeatures).fill(0);
+        const XStd = new Array(numFeatures).fill(0);
+        const XMin = new Array(numFeatures).fill(0);
+        const XMax = new Array(numFeatures).fill(0);
+        for (let i = 0; i < numFeatures; i++) {
+            const xi = X.map(row => row[i]);
+            if (i < 3) {
+                // Original features: z-score normalization
+                XMean[i] = xi.reduce((a, b) => a + b, 0) / xi.length;
+                XStd[i] = Math.sqrt(xi.reduce((a, b) => a + Math.pow(b - XMean[i], 2), 0) / xi.length);
+            } else {
+                // Cross terms: min-max normalization
+                XMin[i] = Math.min(...xi);
+                XMax[i] = Math.max(...xi);
+            }
+        }
+        const yMean = y.reduce((a, b) => a + b, 0) / y.length;
+        const yStd = Math.sqrt(y.reduce((a, b) => a + Math.pow(b - yMean, 2), 0) / y.length);
+
+        const XNorm = X.map(row => {
+            return row.map((val, i) => {
+                if (i < 3) {
+                    // Original features: z-score normalization
+                    return (val - XMean[i]) / XStd[i];
+                } else {
+                    // Cross terms: min-max normalization
+                    return (val - XMin[i]) / (XMax[i] - XMin[i]);
+                }
+            });
+        });
+        const yNorm = y.map(val => (val - yMean) / yStd);
+
+        return { X: XNorm, y: yNorm, XMean, XStd, XMin, XMax, yMean, yStd };
+    }
+
+    // Shuffle array
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    // Neural Network Model
+    class NeuralNetwork {
+        constructor(layerSizes, learningRate) {
+            this.layerSizes = layerSizes;
+            this.learningRate = learningRate;
+
+            // Initialize weights and biases
+            this.resetWeights();
+        }
+
+        resetWeights() {
+            this.weights = [];
+            this.biases = [];
+            for (let i = 0; i < this.layerSizes.length - 1; i++) {
+                const inputSize = this.layerSizes[i];
+                const outputSize = this.layerSizes[i + 1];
+
+                // He initialization for weights
+                const weightMatrix = new Array(inputSize).fill(0).map(() =>
+                    new Array(outputSize).fill(0).map(() => (Math.random() * 2 - 1) * Math.sqrt(2 / inputSize))
+                );
+                this.weights.push(weightMatrix);
+
+                // Initialize biases to zero
+                const biasVector = new Array(outputSize).fill(0);
+                this.biases.push(biasVector);
+            }
+        }
+
+        // Forward pass
+        forward(X) {
+            this.activations = [X]; // List of activations per layer
+            let input = X;
+            for (let i = 0; i < this.weights.length; i++) {
+                const W = this.weights[i];
+                const b = this.biases[i];
+                const Z = input.map(x => {
+                    const z = new Array(b.length).fill(0);
+                    for (let j = 0; j < b.length; j++) {
+                        z[j] = b[j];
+                        for (let k = 0; k < x.length; k++) {
+                            z[j] += x[k] * W[k][j];
+                        }
+                    }
+                    return z;
+                });
+                let A;
+                if (i < this.weights.length - 1) {
+                    // Hidden layers with ReLU activation
+                    A = Z.map(z => z.map(relu));
+                } else {
+                    // Output layer (no activation function)
+                    A = Z;
+                }
+                this.activations.push(A);
+                input = A;
+            }
+            this.output = this.activations[this.activations.length - 1].map(a => a[0]); // Since output size is 1
+            return this.output;
+        }
+
+        // Compute loss (Mean Squared Error)
+        computeLoss(yTrue) {
+            const n = yTrue.length;
+            const loss = this.output.reduce((sum, o, i) => sum + Math.pow(o - yTrue[i], 2), 0) / n;
+            return loss;
+        }
+
+        // Backward pass
+        backward(yTrue) {
+            const n = yTrue.length;
+            const deltas = []; // List of delta per layer
+            // Output layer delta
+            const deltaL = this.activations[this.activations.length - 1].map((a, i) => {
+                return [2 * (a[0] - yTrue[i]) / n]; // Derivative of MSE loss
+            });
+            deltas.unshift(deltaL);
+
+            // Backpropagate through hidden layers
+            for (let l = this.weights.length - 1; l > 0; l--) {
+                const W_next = this.weights[l];
+                const delta_next = deltas[0];
+                const Z = this.activations[l]; // Pre-activation
+                const delta = Z.map((z, i) => {
+                    const derivative = z.map(reluDerivative);
+                    const delta_val = new Array(W_next.length).fill(0);
+                    for (let j = 0; j < W_next.length; j++) {
+                        for (let k = 0; k < W_next[0].length; k++) {
+                            delta_val[j] += W_next[j][k] * delta_next[i][k];
+                        }
+                        delta_val[j] *= derivative[j];
+                    }
+                    return delta_val;
+                });
+                deltas.unshift(delta);
+            }
+
+            // Gradients
+            this.dWeights = [];
+            this.dBiases = [];
+            for (let l = 0; l < this.weights.length; l++) {
+                const A_prev = this.activations[l];
+                const delta = deltas[l];
+                const dW = new Array(this.weights[l].length).fill(0).map(() =>
+                    new Array(this.weights[l][0].length).fill(0)
+                );
+                const db = new Array(this.biases[l].length).fill(0);
+
+                for (let i = 0; i < A_prev.length; i++) {
+                    const a_prev = A_prev[i];
+                    const delta_i = delta[i];
+                    for (let j = 0; j < delta_i.length; j++) {
+                        db[j] += delta_i[j];
+                        for (let k = 0; k < a_prev.length; k++) {
+                            dW[k][j] += a_prev[k] * delta_i[j];
+                        }
+                    }
+                }
+                // Average gradients over batch
+                for (let i = 0; i < dW.length; i++) {
+                    for (let j = 0; j < dW[0].length; j++) {
+                        dW[i][j] /= A_prev.length;
+                    }
+                }
+                for (let i = 0; i < db.length; i++) {
+                    db[i] /= A_prev.length;
+                }
+                this.dWeights.push(dW);
+                this.dBiases.push(db);
+            }
+        }
+
+        // Update weights and biases
+        updateParameters() {
+            for (let l = 0; l < this.weights.length; l++) {
+                const W = this.weights[l];
+                const b = this.biases[l];
+                const dW = this.dWeights[l];
+                const db = this.dBiases[l];
+
+                for (let i = 0; i < W.length; i++) {
+                    for (let j = 0; j < W[0].length; j++) {
+                        W[i][j] -= this.learningRate * dW[i][j];
+                    }
+                }
+                for (let i = 0; i < b.length; i++) {
+                    b[i] -= this.learningRate * db[i];
+                }
+            }
+        }
+
+        // Train for one batch
+        train(X, yTrue) {
+            this.forward(X);
+            this.backward(yTrue);
+            this.updateParameters();
+        }
+    }
+
+    // Function to display weights
+    function displayWeights(model, epoch) {
+        weightsContainer.innerHTML = ''; // Clear previous weights
+        for (let l = 0; l < model.weights.length; l++) {
+            const container = document.createElement('div');
+            container.classList.add('weight-table');
+            const title = document.createElement('h4');
+            title.innerText = `Layer ${l + 1} Weights (Epoch ${epoch})`;
+            container.appendChild(title);
+            const table = document.createElement('table');
+            const headerRow = document.createElement('tr');
+            headerRow.appendChild(document.createElement('th')); // Empty corner cell
+            for (let j = 0; j < model.weights[l][0].length; j++) {
+                const th = document.createElement('th');
+                th.innerText = `Neuron ${j + 1}`;
+                headerRow.appendChild(th);
+            }
+            table.appendChild(headerRow);
+            for (let i = 0; i < model.weights[l].length; i++) {
+                const tr = document.createElement('tr');
+                const th = document.createElement('th');
+                th.innerText = `Input ${i + 1}`;
+                tr.appendChild(th);
+                for (let j = 0; j < model.weights[l][0].length; j++) {
+                    const td = document.createElement('td');
+                    td.innerText = model.weights[l][i][j].toFixed(3);
+                    tr.appendChild(td);
+                }
+                table.appendChild(tr);
+            }
+            container.appendChild(table);
+            weightsContainer.appendChild(container);
+        }
+    }
+
+    // Global variables
+    let model = null;
+    let data = null;
+    let trainLoss = [];
+    let isModelInitialized = false;
+    let totalEpochsTrained = 0;
+
+    // Function to initialize the model
+    function initializeModel() {
+        // Get parameters
+        const hiddenUnits = parseInt(hiddenUnitsSlider.value);
+        const hiddenLayers = parseInt(hiddenLayersSlider.value);
+        const learningRate = parseFloat(learningRateSlider.value);
+
+        // Build model
+        const inputSize = 6; // x1, x2, x3, x1*x2, x2*x3, x1*x3
+        const layerSizes = [inputSize]; // Input size
+        for (let i = 0; i < hiddenLayers; i++) {
+            layerSizes.push(hiddenUnits);
+        }
+        layerSizes.push(1); // Output size
+        model = new NeuralNetwork(layerSizes, learningRate);
+        isModelInitialized = true;
+        trainLoss = []; // Reset the training loss history
+        totalEpochsTrained = 0;
+    }
+
+    // Function to train the model
+    async function trainModel(continueTraining = false) {
+        // Clear previous plots and weights
+        lossPlot.innerHTML = '';
+        functionPlot.innerHTML = '';
+        weightsContainer.innerHTML = '';
+
+        // Get parameters
+        const epochs = parseInt(epochsSlider.value);
+        const batchSize = parseInt(batchSizeSlider.value);
+
+        if (!data) {
+            // Generate data
+            const rawData = generateData();
+            data = normalizeData(rawData);
+        }
+
+        if (!continueTraining || !isModelInitialized) {
+            initializeModel();
+        }
+
+        // Training loop
+        for (let epoch = 1; epoch <= epochs; epoch++) {
+            // Shuffle data
+            const indices = [...Array(data.X.length).keys()];
+            shuffleArray(indices);
+
+            for (let i = 0; i < indices.length; i += batchSize) {
+                const batchIndices = indices.slice(i, i + batchSize);
+                const batchX = batchIndices.map(index => data.X[index]);
+                const batchY = batchIndices.map(index => data.y[index]);
+                model.train(batchX, batchY);
+            }
+            const loss = model.computeLoss(data.y); // Compute loss on the whole dataset
+            trainLoss.push({ epoch: totalEpochsTrained + epoch, loss: loss });
+            // Update weight visualization
+            displayWeights(model, totalEpochsTrained + epoch);
+            // Update training loss plot
+            updateLossPlot(trainLoss);
+            // Update function approximation plot every few epochs
+            if (epoch % Math.ceil(epochs / 5) === 0 || epoch === epochs) {
+                updateFunctionPlot(model, data);
+            }
+            await new Promise(resolve => setTimeout(resolve, 10)); // Small delay for visualization
+        }
+        totalEpochsTrained += epochs;
+    }
+
+    // Function to update training loss plot
+    function updateLossPlot(trainLoss) {
+        const lossTrace = {
+            x: trainLoss.map(d => d.epoch),
+            y: trainLoss.map(d => d.loss),
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Training Loss',
+            line: { color: 'blue' }
+        };
+        const lossLayout = {
+            xaxis: { title: 'Epoch' },
+            yaxis: { title: 'Loss' },
+            margin: { t: 30 }
+        };
+        Plotly.newPlot(lossPlot, [lossTrace], lossLayout);
+    }
+
+    // Function to update function approximation plot
+    function updateFunctionPlot(model, data) {
+        // Generate test data for plotting
+        const testX = [];
+        const trueY = [];
+        for (let x1 = -5; x1 <= 5; x1 += 0.5) {
+            for (let x2 = -5; x2 <= 5; x2 += 0.5) {
+                const x3 = 0; // Fix x3 at 0 for visualization
+
+                const x1x2 = x1 * x2;
+                const x2x3 = x2 * x3;
+                const x1x3 = x1 * x3;
+
+                const f = Math.sin(x1) + Math.cos(x2) + Math.sin(2 * x3) * Math.cos(x1);
+
+                testX.push([x1, x2, x3, x1x2, x2x3, x1x3]);
+                trueY.push(f);
+            }
+        }
+        // Normalize test data
+        const testXNorm = testX.map(row => {
+            return row.map((val, i) => {
+                if (i < 3) {
+                    // Original features: z-score normalization
+                    return (val - data.XMean[i]) / data.XStd[i];
+                } else {
+                    // Cross terms: min-max normalization
+                    return (val - data.XMin[i]) / (data.XMax[i] - data.XMin[i]);
+                }
+            });
+        });
+        // Model predictions
+        const modelOutputNorm = model.forward(testXNorm);
+        // Denormalize outputs
+        const modelOutput = modelOutputNorm.map(val => val * data.yStd + data.yMean);
+
+        // Prepare data for plotting
+        const xValues = testX.map(d => d[0]);
+        const yValues = testX.map(d => d[1]);
+
+        // Reshape data for surface plot
+        const size = Math.sqrt(trueY.length);
+        const xGrid = [];
+        const yGrid = [];
+        const trueZ = [];
+        const predZ = [];
+        let index = 0;
+        for (let i = 0; i < size; i++) {
+            const xRow = [];
+            const yRow = [];
+            const trueZRow = [];
+            const predZRow = [];
+            for (let j = 0; j < size; j++) {
+                xRow.push(xValues[index]);
+                yRow.push(yValues[index]);
+                trueZRow.push(trueY[index]);
+                predZRow.push(modelOutput[index]);
+                index++;
+            }
+            xGrid.push(xRow);
+            yGrid.push(yRow);
+            trueZ.push(trueZRow);
+            predZ.push(predZRow);
+        }
+
+        // Plot function approximation
+        const trueSurface = {
+            x: xGrid,
+            y: yGrid,
+            z: trueZ,
+            type: 'surface',
+            name: 'True Function',
+            colorscale: 'Viridis',
+            showscale: false,
+            opacity: 0.7
+        };
+        const predSurface = {
+            x: xGrid,
+            y: yGrid,
+            z: predZ,
+            type: 'surface',
+            name: 'Predicted Function',
+            colorscale: 'Portland',
+            showscale: false,
+            opacity: 0.7
+        };
+        const functionLayout = {
+            scene: {
+                xaxis: { title: 'x1' },
+                yaxis: { title: 'x2' },
+                zaxis: { title: 'f(x1, x2, x3=0)' }
+            },
+            margin: { t: 30 },
+            legend: { x: 0, y: 0 }
+        };
+        Plotly.newPlot(functionPlot, [trueSurface, predSurface], functionLayout);
+    }
+
+    // Event listeners for buttons
+    trainButton.addEventListener('click', () => trainModel(false));
+    continueButton.addEventListener('click', () => trainModel(true));
+    resetButton.addEventListener('click', () => {
+        model = null;
+        isModelInitialized = false;
+        trainLoss = [];
+        totalEpochsTrained = 0;
+        // Clear plots
+        lossPlot.innerHTML = '';
+        functionPlot.innerHTML = '';
+        weightsContainer.innerHTML = '';
+    });
+
+</script>
+
+</body>
+</html>

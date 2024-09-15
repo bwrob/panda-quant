@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vasicek Model Interactive Demo</title>
+    <!-- Include Chart.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Include MathJax library for rendering mathematical equations -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async
+            src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f9f9f9;
+        }
+        /* Introduction Section Styling */
+        .intro {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        /* Controls Section Styling */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .slider-container {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            flex: 1 1 200px;
+            max-width: 300px;
+        }
+        .slider-container label { 
+            display: block; 
+            margin-bottom: 5px; 
+            font-weight: bold;
+        }
+        .slider-container input[type=range] { 
+            width: 100%; 
+        }
+        .slider-value {
+            text-align: right;
+            font-size: 0.9em;
+            color: #555;
+        }
+        /* Charts Section Styling */
+        .charts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: space-between;
+        }
+        .chart-box {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            flex: 1 1 30%;
+            min-width: 300px;
+        }
+        h2, h3 { 
+            color: #333; 
+        }
+        @media (max-width: 1200px) {
+            .chart-box {
+                flex: 1 1 45%;
+            }
+        }
+        @media (max-width: 800px) {
+            .chart-box {
+                flex: 1 1 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Introduction Section -->
+    <div class="intro">
+        <h2>Introduction to the Vasicek Model</h2>
+        <p>The <strong>Vasicek Model</strong> is a foundational framework in interest rate modeling, capturing the dynamics of short-term interest rates through mean reversion and stochastic volatility. It is widely used for pricing interest rate derivatives, managing interest rate risk, and constructing yield curves.</p>
+        
+        <h3>What are Short Rates?</h3>
+        <p>Short rates, denoted as \( r(t) \), represent the instantaneous interest rate at a specific point in time. They are fundamental in the modeling of interest rates and are used to derive various interest rate instruments, including bonds and derivatives.</p>
+        
+        <h3>Simulation of Short Rates</h3>
+        <p>The Vasicek Model describes the evolution of short rates using the following stochastic differential equation (SDE):</p>
+        <p>
+            \[
+            dr_t = a(b - r_t)dt + \sigma dW_t
+            \]
+        </p>
+        <ul>
+            <li><strong>a</strong>: Speed of mean reversion</li>
+            <li><strong>b</strong>: Long-term mean level</li>
+            <li><strong>σ</strong>: Volatility of the interest rate</li>
+            <li><strong>W<sub>t</sub></strong>: Wiener process (standard Brownian motion)</li>
+        </ul>
+        <p><strong>Mean Reversion:</strong> The parameter \( a \) determines how quickly the short rate \( r(t) \) reverts to the long-term mean \( b \). A higher \( a \) results in faster mean reversion.</p>
+        
+        <h4>Closed-Form Solution</h4>
+        <p>The Vasicek Model has a closed-form solution for the short rate:</p>
+        <p>
+            \[
+            r(t) = r_0 e^{-at} + b(1 - e^{-at}) + \sigma e^{-at} \int_0^t e^{as} dW_s
+            \]
+        </p>
+        <p>Based on this solution, the short rate \( r(t) \) is normally distributed with the following mean and variance:</p>
+        <p>
+            \[
+            r(t) \sim \mathcal{N}\left( r_0 e^{-at} + b(1 - e^{-at}), \frac{\sigma^2}{2a} \left(1 - e^{-2at}\right) \right)
+            \]
+        </p>
+        <ul>
+            <li><strong>Mean:</strong> \( E[r(t)] = r_0 e^{-at} + b(1 - e^{-at}) \)</li>
+            <li><strong>Variance:</strong> \( \text{Var}[r(t)] = \frac{\sigma^2}{2a} \left(1 - e^{-2at}\right) \)</li>
+        </ul>
+        <p>This normal distribution property allows for both analytical and numerical methods to simulate short rate paths.</p>
+        
+        <h4>Euler-Maruyama Method</h4>
+        <p>For numerical simulation of the Vasicek Model, the Euler-Maruyama method is commonly used. It discretizes the SDE into finite time steps, allowing for the approximation of the short rate path. The iterative formula is:</p>
+        <p>
+            \[
+            r_{t+\Delta t} = r_t + a(b - r_t)\Delta t + \sigma \sqrt{\Delta t} \cdot Z_t
+            \]
+        </p>
+        <p>where \( Z_t \) is a standard normally distributed random variable. This method is straightforward to implement and provides a reasonable approximation of the short rate dynamics.</p>
+        
+        <h3>Zero-Coupon Bond (ZCB) Pricing</h3>
+        <p>A Zero-Coupon Bond is a bond that pays no coupons and is redeemed at face value at maturity \( T \). The price of a ZCB under the Vasicek Model is given by:</p>
+        <p>
+            \[
+            P(0, T) = e^{A(T) - B(T) r_0}
+            \]
+        </p>
+        <p>where:</p>
+        <p>
+            \[
+            B(T) = \frac{1 - e^{-aT}}{a}
+            \]
+            <br>
+            \[
+            A(T) = \left(b - \frac{\sigma^2}{2a^2}\right)(B(T) - T) - \frac{\sigma^2 B(T)^2}{4a}
+            \]
+        </p>
+        <p>This formula provides a closed-form solution for the bond price based on the initial short rate \( r_0 \) and the model parameters.</p>
+        
+        <h3>Yield Curve Construction</h3>
+        <p>The yield \( y(T) \) of a Zero-Coupon Bond is derived from its price using the formula:</p>
+        <p>
+            \[
+            y(T) = -\frac{\ln(P(0, T))}{T}
+            \]
+        </p>
+        <p>The yield curve represents the relationship between yields and their respective maturities, providing insights into the term structure of interest rates.</p>
+        
+        <h3>Parameter Calibration</h3>
+        <p>Calibrating the Vasicek Model involves determining the optimal values of the parameters \( a \), \( b \), \( \sigma \), and \( r_0 \) to best fit observed market data. Calibration can be performed using:</p>
+        <ul>
+            <li><strong>Historical Data:</strong> Analyzing historical short rate movements to estimate parameters through methods like Maximum Likelihood Estimation (MLE) or Least Squares.</li>
+            <li><strong>Option Prices:</strong> Utilizing the prices of interest rate derivatives to infer the model parameters by minimizing the difference between observed and model-generated option prices.</li>
+        </ul>
+        <p>Accurate calibration is crucial for the model to reflect real market conditions and provide reliable pricing and risk management insights.</p>
+        
+        <p>This interactive demo allows you to explore how different parameters influence the short rate dynamics and the pricing of Zero-Coupon Bonds (ZCBs) across multiple simulated paths.</p>
+    </div>
+
+    <!-- Controls Section -->
+    <div class="controls">
+        <!-- Slider for a -->
+        <div class="slider-container">
+            <label for="a">a (Speed of Mean Reversion): <span id="aValue" class="slider-value">0.10</span></label>
+            <input type="range" id="a" min="0.01" max="1.00" step="0.01" value="0.10" oninput="updateParameters()">
+        </div>
+        <!-- Slider for b -->
+        <div class="slider-container">
+            <label for="b">b (Long-term Mean): <span id="bValue" class="slider-value">0.050</span></label>
+            <input type="range" id="b" min="0.01" max="0.10" step="0.005" value="0.05" oninput="updateParameters()">
+        </div>
+        <!-- Slider for sigma -->
+        <div class="slider-container">
+            <label for="sigma">σ (Volatility): <span id="sigmaValue" class="slider-value">0.010</span></label>
+            <input type="range" id="sigma" min="0.001" max="0.05" step="0.001" value="0.01" oninput="updateParameters()">
+        </div>
+        <!-- Slider for r0 -->
+        <div class="slider-container">
+            <label for="r0">Initial Short Rate r₀: <span id="r0Value" class="slider-value">0.030</span></label>
+            <input type="range" id="r0" min="0.01" max="0.10" step="0.005" value="0.03" oninput="updateParameters()">
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="charts">
+        <!-- Short Rate Evolution Chart -->
+        <div class="chart-box">
+            <h3>Short Rate Evolution Over Time</h3>
+            <canvas id="rateChart" width="400" height="300"></canvas>
+        </div>
+        <!-- ZCB Prices Term Structure Chart -->
+        <div class="chart-box">
+            <h3>Zero-Coupon Bond Prices Term Structure</h3>
+            <canvas id="bondChart" width="400" height="300"></canvas>
+        </div>
+        <!-- ZCB Yield Curve Chart -->
+        <div class="chart-box">
+            <h3>Zero-Coupon Bond Yield Curve</h3>
+            <canvas id="yieldChart" width="400" height="300"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Initialize chart instances
+        let rateChartInstance = null;
+        let bondChartInstance = null;
+        let yieldChartInstance = null;
+
+        const fixedT = 5; // Fixed time horizon in years
+        const fixedSteps = 100; // Fixed number of simulation steps
+        const numPaths = 3; // Number of paths to simulate
+
+        // Colors for different paths
+        const pathColors = [
+            'rgba(255, 99, 132, 1)',    // Red
+            'rgba(54, 162, 235, 1)',    // Blue
+            'rgba(75, 192, 192, 1)'     // Green
+        ];
+
+        // Function to update slider values display
+        function updateParameters() {
+            document.getElementById('aValue').innerText = parseFloat(document.getElementById('a').value).toFixed(2);
+            document.getElementById('bValue').innerText = parseFloat(document.getElementById('b').value).toFixed(3);
+            document.getElementById('sigmaValue').innerText = parseFloat(document.getElementById('sigma').value).toFixed(3);
+            document.getElementById('r0Value').innerText = parseFloat(document.getElementById('r0').value).toFixed(3);
+            simulateAndPlot();
+        }
+
+        // Function to simulate the Vasicek model and update charts
+        function simulateAndPlot() {
+            // Retrieve parameters
+            const a = parseFloat(document.getElementById('a').value);
+            const b = parseFloat(document.getElementById('b').value);
+            const sigma = parseFloat(document.getElementById('sigma').value);
+            const r0 = parseFloat(document.getElementById('r0').value);
+            const T = fixedT;
+            const steps = fixedSteps;
+
+            const dt = T / steps;
+            const time = [];
+            for (let i = 0; i <= steps; i++) {
+                time.push((i * dt).toFixed(2));
+            }
+
+            // Simulate multiple short rate paths
+            const allRates = []; // Array to hold all paths
+            const allBondPrices = []; // Array to hold ZCB prices for each path
+            const allYields = []; // Array to hold yields for each path
+
+            for (let p = 0; p < numPaths; p++) {
+                const rates = [r0];
+                for (let i = 1; i <= steps; i++) {
+                    const prev = rates[i - 1];
+                    const dr = a * (b - prev) * dt + sigma * Math.sqrt(dt) * randomNormal();
+                    rates.push(prev + dr);
+                }
+                allRates.push(rates);
+
+                // Calculate ZCB prices based on the final short rate r_T of each path
+                const bondPrices = [];
+                const bondYields = [];
+                const numMaturities = 100;
+                for (let m = 0.1; m <= T; m += T / numMaturities) {
+                    const B = (1 - Math.exp(-a * m)) / a;
+                    const A = (b - (Math.pow(sigma, 2)) / (2 * Math.pow(a, 2))) * (B - m) - (Math.pow(sigma, 2) * Math.pow(B, 2)) / (4 * a);
+                    const rT = rates[rates.length - 1];
+                    const P = Math.exp(A - B * rT);
+                    bondPrices.push(P);
+                    const y = -Math.log(P) / m; // Yield calculation
+                    bondYields.push(y);
+                }
+                allBondPrices.push(bondPrices);
+                allYields.push(bondYields);
+            }
+
+            // Prepare datasets for Short Rate Evolution Chart
+            const rateDatasets = [];
+            for (let p = 0; p < numPaths; p++) {
+                rateDatasets.push({
+                    label: `Path ${p + 1}`,
+                    data: allRates[p],
+                    borderColor: pathColors[p],
+                    backgroundColor: pathColors[p].replace('1)', '0.2)'),
+                    fill: false,
+                    tension: 0.1
+                });
+            }
+
+            // Destroy existing rate chart if it exists
+            if (rateChartInstance) {
+                rateChartInstance.destroy();
+            }
+
+            // Create Short Rate Evolution Chart
+            const ctxRate = document.getElementById('rateChart').getContext('2d');
+            rateChartInstance = new Chart(ctxRate, {
+                type: 'line',
+                data: {
+                    labels: time,
+                    datasets: rateDatasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Simulated Short Rate Paths'
+                        },
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Time (Years)'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Short Rate r(t)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Prepare datasets for ZCB Prices Term Structure Chart
+            const bondDatasets = [];
+            for (let p = 0; p < numPaths; p++) {
+                bondDatasets.push({
+                    label: `Path ${p + 1}`,
+                    data: allBondPrices[p],
+                    borderColor: pathColors[p],
+                    backgroundColor: pathColors[p].replace('1)', '0.2)'),
+                    fill: false,
+                    tension: 0.1
+                });
+            }
+
+            // Destroy existing bond chart if it exists
+            if (bondChartInstance) {
+                bondChartInstance.destroy();
+            }
+
+            // Create ZCB Prices Term Structure Chart
+            const ctxBond = document.getElementById('bondChart').getContext('2d');
+            bondChartInstance = new Chart(ctxBond, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 100}, (_, i) => (0.1 + i * (T / 100)).toFixed(2)),
+                    datasets: bondDatasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Zero-Coupon Bond Prices Term Structure'
+                        },
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Maturity (Years)'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'ZCB Price P(0, T)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Prepare datasets for ZCB Yield Curve Chart
+            const yieldDatasets = [];
+            for (let p = 0; p < numPaths; p++) {
+                yieldDatasets.push({
+                    label: `Path ${p + 1}`,
+                    data: allYields[p],
+                    borderColor: pathColors[p],
+                    backgroundColor: pathColors[p].replace('1)', '0.2)'),
+                    fill: false,
+                    tension: 0.1
+                });
+            }
+
+            // Destroy existing yield chart if it exists
+            if (yieldChartInstance) {
+                yieldChartInstance.destroy();
+            }
+
+            // Create ZCB Yield Curve Chart
+            const ctxYield = document.getElementById('yieldChart').getContext('2d');
+            yieldChartInstance = new Chart(ctxYield, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 100}, (_, i) => (0.1 + i * (T / 100)).toFixed(2)),
+                    datasets: yieldDatasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Zero-Coupon Bond Yield Curves'
+                        },
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Maturity (Years)'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Yield y(T)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Function to generate random numbers with standard normal distribution using Box-Muller transform
+        function randomNormal() {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random(); // Convert [0,1) to (0,1)
+            while(v === 0) v = Math.random();
+            return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+        }
+
+        // Initial setup: Update slider values and run initial simulation
+        window.onload = function() {
+            updateParameters();
+        };
+    </script>
+</body>
+</html>
