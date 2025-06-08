@@ -71,8 +71,8 @@ def run_demonstration(
         base_rates_map=base_rates_map,
         base_s0_map=temp_s0_map_for_gen,
         base_vol_map=temp_vol_map_for_gen,
-        base_credit_spread_curves_map=base_credit_spread_curves, # NEW
-        credit_spread_curve_tenors_map=credit_spread_tenors,   # NEW
+        base_credit_spread_curves_map=base_credit_spread_curves,
+        credit_spread_curve_tenors_map=credit_spread_tenors,
         random_seed=42
     )
     N_GLOBAL_SCENARIOS = 100
@@ -116,8 +116,8 @@ def run_demonstration(
                         "index_stub": DEMO_RATE_INDEX_STUB, "freq": 2,
                         "call_dates": [(val_d + relativedelta(years=y)) for y in [2,3,4]],
                         "call_prices": [102.0, 101.0, 100.0]},
-            "pricer_params": {"g2_params": default_g2_p},
-            "tff_config": {"n_train": 128, "n_test": 10}
+            "pricer_params": {"g2_params": default_g2_p, "g2_grid_steps": 16},
+            "tff_config": {"n_train": 2000, "n_test": 10}
         },
         { # NEW: Callable bond with credit spread
             "instrument_id": f"{DEMO_CURRENCY}_{DEMO_RATE_INDEX_STUB}_CALLABLE_SPREAD_6Y_G2",
@@ -129,7 +129,7 @@ def run_demonstration(
                         "call_prices": [103.0, 102.0, 101.0, 100.0],
                         "credit_spread_curve_name": CREDIT_CURVE_CORP_BBB},
             "pricer_params": {"g2_params": default_g2_p},
-            "tff_config": {"n_train": 128, "n_test": 10}
+            "tff_config": {"n_train": 16, "n_test": 10}
         },
         {
             "instrument_id": f"{DEMO_CURRENCY}_{CONV_UNDERLYING_SYMBOL}_CONV_BOND_5Y_S0_DYNAMIC",
@@ -166,7 +166,7 @@ def run_demonstration(
                         'strike_price': 105.0, 'option_type': 'call',
                         'currency': DEMO_CURRENCY, 'underlying_symbol': OPT_UNDERLYING_SYMBOL,
             }, "pricer_params": { 'bs_risk_free_rate': 0.025, 'bs_dividend_yield': 0.01 },
-            "tff_config": {"n_train": 128, "n_test": 10, "option_feature_order": 2}
+            "tff_config": {"n_train": 16, "n_test": 10, "option_feature_order": 2}
         },
         { "instrument_id": f"{DEMO_CURRENCY}_{DEMO_RATE_INDEX_STUB}_VANILLA_10Y_FULL",
           "product_type": "VanillaBond", "pricing_preference": "FULL",
@@ -197,7 +197,6 @@ def run_demonstration(
         {"client_id": "ClientB", "instrument_id": f"{DEMO_CURRENCY}_{OPT_UNDERLYING_SYMBOL}_EURO_CALL_1Y_STRIKE105_ORD2", "num_holdings": 200},
         {"client_id": "ClientA", "instrument_id": f"{DEMO_CURRENCY}_{DEMO_RATE_INDEX_STUB}_VANILLA_10Y_FULL", "num_holdings": 80},
         {"client_id": "ClientA", "instrument_id": "MISSING_INSTRUMENT_ID_EXAMPLE", "num_holdings": 10},
-        # Add new spread bonds to holdings
         {"client_id": "ClientA", "instrument_id": f"{DEMO_CURRENCY}_{DEMO_RATE_INDEX_STUB}_VANILLA_SPREAD_7Y", "num_holdings": 70},
         {"client_id": "ClientB", "instrument_id": f"{DEMO_CURRENCY}_{DEMO_RATE_INDEX_STUB}_CALLABLE_SPREAD_6Y_G2", "num_holdings": 60},
     ]
@@ -257,6 +256,31 @@ def run_demonstration(
         except Exception as e:
             print(f"   ERROR loading or pricing portfolio from JSON string: {e}")
             import traceback; traceback.print_exc()
+
+        print("\\n--- Re-serializing Portfolio Specs from JSON String to Full Pricing ---")
+        try:
+            loaded_portfolio_specs_from_str = json.loads(portfolio_json_string)
+            for d in loaded_portfolio_specs_from_str:
+                d["pricing_preference"] = "FULL"
+            portfolio_builder_from_json = PortfolioBuilder(model_registry)
+            client_portfolios_from_json = portfolio_builder_from_json.build_portfolios_from_specs(
+                portfolio_specs_list=loaded_portfolio_specs_from_str, global_valuation_date=val_d,
+                default_g2_params=default_g2_p, default_bs_rfr=0.025, default_bs_div=0.01 )
+            if portfolio_builder_from_json.uncalculated_instruments:
+                 print(f"  WARNING (JSON Load): Uncalculated instruments: {portfolio_builder_from_json.uncalculated_instruments}")
+            if client_portfolios_from_json:
+                reloaded_portfolio_analyzer = PortfolioAnalytics(
+                    client_portfolios=client_portfolios_from_json, global_market_scenarios=global_market_scenarios,
+                    global_factor_names=global_factor_names, numeric_rate_tenors=numeric_rate_tenors,
+                    scenario_generator_for_base_values=scenario_gen_global )
+                print("  Results for reloaded portfolio from JSON:")
+                reloaded_var_results = reloaded_portfolio_analyzer.run_var_analysis(var_percentiles=[1.0, 5.0])
+            else: print("  No client portfolios were built from JSON specs.")
+        except Exception as e:
+            print(f"   ERROR loading or pricing portfolio from JSON string: {e}")
+            import traceback; traceback.print_exc()
+            
+
 
     print("\\n--- End of Demonstration ---")
 

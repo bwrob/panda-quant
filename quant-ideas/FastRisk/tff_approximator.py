@@ -17,9 +17,12 @@ from product_definitions import (
     ConvertibleBondStaticBase, EuropeanOptionStatic, MBSPoolStatic,
     _parse_date_input # For worker
 )
-from pricers import (
-    PricerBase, QuantLibBondPricer, BlackScholesPricer, MBSPricer
-)
+# Updated pricer imports
+from base_pricer import PricerBase
+from quantlib_bond_pricer import QuantLibBondPricer
+from black_scholes_pricer import BlackScholesPricer
+from mbs_pricer import MBSPricer
+
 from prepayment_models import ( # For worker with MBS
     ConstantCPRModel, PSAModel, RefiIncentivePrepaymentModel
 )
@@ -158,13 +161,14 @@ def _price_one_scenario_for_tff(worker_args: tuple) -> float:
         return price_result_array[0]
 
     elif product_type == 'EuropeanOption':
-        bs_config = pricer_config_for_worker.get('bs_pricer_config', {})
-        if 'risk_free_rate' not in bs_config or bs_config['risk_free_rate'] is None:
-            raise ValueError("'risk_free_rate' missing or None in bs_pricer_config for EuropeanOption TFF worker.")
-        pricer_instance = BlackScholesPricer(product_static_obj, bs_config['risk_free_rate'], bs_config.get('dividend_yield',0.0))
-        if len(single_market_scenario_data) == 2: # S0 and Vol
-            return pricer_instance.price(stock_price=single_market_scenario_data[0], volatility=single_market_scenario_data[1])
-        else: raise ValueError(f"Option TFF expects 2 inputs (S0, Vol), got {len(single_market_scenario_data)}")
+        bs_cfg = pricer_config_for_worker.get('bs_pricer_config', {})
+        pricer_instance = BlackScholesPricer(product_static_obj)
+        return pricer_instance.price(
+            stock_price=single_market_scenario_data[0],
+            volatility=single_market_scenario_data[1],
+            risk_free_rate=bs_cfg['risk_free_rate'],
+            dividend_yield=bs_cfg.get('dividend_yield', 0.0)
+        )
     raise ValueError(f"Pricer path failed for product type: {product_type}")
 
 
@@ -230,7 +234,7 @@ class TensorFunctionalFormCalibrate:
 
     def sample_and_fit(
         self, full_market_scenarios_for_tff_factors: np.ndarray,
-        n_train: int = 50, n_test: int = 20,
+        n_train: int = 64, n_test: int = 8,
         random_seed: int = 0, sampling_method: str = 'sobol', parallel_workers: int = None,
         option_feature_order: int = 0, **price_kwargs
     ) -> tuple[TensorFunctionalForm, np.ndarray, np.ndarray, float, dict]:
@@ -245,7 +249,7 @@ class TensorFunctionalFormCalibrate:
         domain_min, domain_max = np.min(full_market_scenarios_for_tff_factors, axis=0), np.max(full_market_scenarios_for_tff_factors, axis=0)
 
         train_tff_inputs_raw = None
-        if sampling_method == 'sobol':
+        if sampling_method in ['sobol', 'uniform']:
             with warnings.catch_warnings():
                 warnings.filterwarnings(
                     "ignore",
@@ -254,18 +258,20 @@ class TensorFunctionalFormCalibrate:
                 )
                 sampler = Sobol(d=num_tff_factors, scramble=True, seed=random_seed)
                 train_tff_inputs_raw = scale(
-                    sampler.random(n=n_train), domain_min, domain_max
+                    sampler.random(n=n_train-1), domain_min, domain_max
                 )
-        elif sampling_method == 'lhs':
-            sampler_lhs = LatinHypercube(d=num_tff_factors, centered=True, seed=random_seed)
-            train_tff_inputs_raw = scale(sampler_lhs.random(n=n_train), domain_min, domain_max)
-        elif sampling_method == 'uniform':
-            train_tff_inputs_raw = rng_np.uniform(low=domain_min, high=domain_max, size=(n_train, num_tff_factors))
-        else: raise ValueError(f"Unknown sampling: {sampling_method}.")
+        else:
+            raise ValueError(f"Unknown sampling method: {sampling_method}. Available methods are 'sobol' and 'uniform'.")
 
-        worker_args_list = [(self.product_static_params_for_worker, 
+        # Append the first row of full_market_scenarios_for_tff_factors to ensure base values are included
+        if self.tff_input_raw_base_values.ndim == 1:
+            if self.tff_input_raw_base_values.shape[0] != num_tff_factors:
+                raise ValueError(f"Base values shape {self.tff_input_raw_base_values.shape} does not match factor names length {num_tff_factors}.")
+            train_tff_inputs_raw = np.vstack([self.tff_input_raw_base_values, train_tff_inputs_raw])
+        
+        worker_args_list = [(self.product_static_params_for_worker,
                              self.pricer_config_for_worker,
-                             self.tff_input_raw_factor_names, 
+                             self.tff_input_raw_factor_names,
                              train_tff_inputs_raw[i],
                              self.valuation_date_for_ql_settings_in_worker.isoformat(),
                              price_kwargs) for i in range(n_train)]
@@ -275,27 +281,57 @@ class TensorFunctionalFormCalibrate:
         if train_prices.ndim == 0 and n_train == 1: train_prices = np.array([train_prices])
         if train_prices.shape[0] != n_train: raise ValueError(f"Shape of train_prices {train_prices.shape} != n_train {n_train}")
 
-        tff_inputs_for_fitting = train_tff_inputs_raw
-        normalization_params = {'means': None, 'stds': None, 'engineered_feature_names': self.tff_input_raw_factor_names, 'is_engineered': False}
+        # 2) Prepare inputs for fitting
+        if self.feature_generation is not None:
+            # use user‐provided feature generator
+            feat_vals_train, feat_names = self.feature_generation.create_features()
+            feat_normed, means, stds = normalize_features(feat_vals_train)
+            tff_inputs_for_fitting = feat_normed
+            normalization_params = {
+                'means': means.tolist(),
+                'stds': stds.tolist(),
+                'engineered_feature_names': feat_names,
+                'is_engineered': True
+            }
+        else:
+            # fallback: raw factors or built-in option featurization
+            tff_inputs_for_fitting = train_tff_inputs_raw
+            normalization_params = {
+                'means': None, 'stds': None,
+                'engineered_feature_names': self.tff_input_raw_factor_names,
+                'is_engineered': False
+            }
+            if self.product_type_str == 'EuropeanOption' and option_feature_order > 0:
+                eng_vals, eng_names = engineer_option_features(
+                    train_tff_inputs_raw[:,0], train_tff_inputs_raw[:,1],
+                    order=option_feature_order
+                )
+                feat_normed, means, stds = normalize_features(eng_vals)
+                tff_inputs_for_fitting = feat_normed
+                normalization_params = {
+                    'means': means.tolist(),
+                    'stds': stds.tolist(),
+                    'engineered_feature_names': eng_names,
+                    'is_engineered': True
+                }
 
-        if self.product_type_str == 'EuropeanOption' and option_feature_order > 0:
-            if train_tff_inputs_raw.shape[1] != 2: raise ValueError(f"Option FE expects 2 raw inputs, got {train_tff_inputs_raw.shape[1]}")
-            engineered_features_train, eng_names = engineer_option_features(train_tff_inputs_raw[:,0], train_tff_inputs_raw[:,1], order=option_feature_order)
-            tff_inputs_for_fitting, means, stds = normalize_features(engineered_features_train)
-            normalization_params = {'means':means.tolist(), 'stds':stds.tolist(), 'engineered_feature_names':eng_names, 'is_engineered':True}
-
+        # 3) build X_train from tff_inputs_for_fitting and fit …
         D_eff = tff_inputs_for_fitting.shape[1]
         X_train = np.hstack([np.array([np.outer(s,s).flatten() for s in tff_inputs_for_fitting]), tff_inputs_for_fitting, np.ones((n_train,1))])
         if np.any(np.isnan(X_train)) or np.any(np.isinf(X_train)): raise ValueError("NaN/Inf in X_train.")
         if np.any(np.isnan(train_prices)) or np.any(np.isinf(train_prices)): raise ValueError("NaN/Inf in train_prices.")
+
         try: coeffs,_,_,_ = np.linalg.lstsq(X_train, train_prices, rcond=None)
         except np.linalg.LinAlgError as e: raise np.linalg.LinAlgError(f"Lstsq failed: {e}.")
 
         A_flat = coeffs[:D_eff*D_eff]
         A_mat = A_flat.reshape(D_eff,D_eff); A_sym = 0.5*(A_mat+A_mat.T)
         b_vec, c_s = coeffs[D_eff*D_eff : D_eff*D_eff+D_eff], coeffs[-1]
+        
+        # Create the fitted TensorFunctionalForm instance
         fitted_tff = TensorFunctionalForm(A_sym, b_vec, c_s)
 
+        # 4) generate test scenarios & true prices …
         test_idx = rng_np.choice(full_market_scenarios_for_tff_factors.shape[0], size=n_test, replace=False)
         test_tff_inputs_raw = full_market_scenarios_for_tff_factors[test_idx]
         test_worker_args = [(self.product_static_params_for_worker, self.pricer_config_for_worker,
@@ -304,13 +340,26 @@ class TensorFunctionalFormCalibrate:
         #print(f"   Generating {n_test} test prices sequentially...")
         test_true_prices = np.array([_price_one_scenario_for_tff(args) for args in test_worker_args])
 
-        test_inputs_eval = test_tff_inputs_raw
-        if self.product_type_str == 'EuropeanOption' and normalization_params.get('is_engineered', False):
-            if test_tff_inputs_raw.shape[1]!=2: raise ValueError(f"Test option TFF inputs expect 2 cols, got {test_tff_inputs_raw.shape[1]}")
-            eng_feat_test,_ = engineer_option_features(test_tff_inputs_raw[:,0], test_tff_inputs_raw[:,1], order=option_feature_order)
-            np_means = np.array(normalization_params['means']) if normalization_params.get('means') is not None else None
-            np_stds = np.array(normalization_params['stds']) if normalization_params.get('stds') is not None else None
-            test_inputs_eval,_,_ = normalize_features(eng_feat_test, np_means, np_stds)
+        # apply same feature logic to test‐set
+        if self.feature_generation is not None:
+            feat_vals_test, _ = self.feature_generation.create_features()
+            test_inputs_eval, _, _ = normalize_features(
+                feat_vals_test,
+                np.array(normalization_params['means']),
+                np.array(normalization_params['stds'])
+            )
+        else:
+            test_inputs_eval = test_tff_inputs_raw
+            if self.product_type_str == 'EuropeanOption' and normalization_params.get('is_engineered', False):
+                eng_vals_test, _ = engineer_option_features(
+                    test_tff_inputs_raw[:,0], test_tff_inputs_raw[:,1],
+                    order=option_feature_order
+                )
+                test_inputs_eval, _, _ = normalize_features(
+                    eng_vals_test,
+                    np.array(normalization_params['means']),
+                    np.array(normalization_params['stds'])
+                )
 
         test_pred_prices = fitted_tff(test_inputs_eval)
         if test_true_prices.ndim==0 and n_test==1: test_true_prices = np.array([test_true_prices])
@@ -319,3 +368,4 @@ class TensorFunctionalFormCalibrate:
 
         rmse = np.sqrt(np.mean((test_true_prices - test_pred_prices)**2))
         return fitted_tff, test_tff_inputs_raw, test_true_prices, rmse, normalization_params
+

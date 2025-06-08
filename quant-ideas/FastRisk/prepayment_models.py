@@ -4,6 +4,7 @@ Includes ConstantCPRModel, PSAModel, and RefiIncentivePrepaymentModel.
 """
 import abc
 import numpy as np
+from custom_importer import import_class_from_module
 
 class PrepaymentModelBase(abc.ABC):
     """Abstract base class for prepayment models."""
@@ -100,3 +101,42 @@ class RefiIncentivePrepaymentModel(PrepaymentModelBase):
         # SMM should be non-negative and typically not excessively large (e.g., > 0.5 for a month)
         # Clamping SMM to a reasonable range, e.g., [0, 0.9] to avoid (1-SMM) being negative.
         return min(max(smm, 0.0), 0.9)
+
+def create_prepayment_model_from_config(config: dict) -> PrepaymentModelBase:
+    """
+    Factory function to create an instance of a prepayment model from a configuration dictionary.
+
+    Args:
+        config (dict): Configuration dictionary specifying the prepayment model to instantiate.
+            Must contain the following keys:
+                - 'module_name' (str): The name of the module containing the model class.
+                - 'class_name' (str): The name of the model class to instantiate.
+                - 'params' (dict, optional): A dictionary of parameters to pass to the model's constructor.
+
+    Returns:
+        PrepaymentModelBase: An instance of the specified prepayment model class.
+    """
+    module_name = config.get("module_name")
+    class_name = config.get("class_name")
+    model_params = config.get("params", {})
+
+    if not module_name:
+        raise KeyError("Prepayment model configuration must include 'module_name'.")
+    if not class_name:
+        raise KeyError("Prepayment model configuration must include 'class_name'.")
+
+    try:
+        # Ensure the class is imported from prepayment_models or a valid custom module
+        # and that it inherits from PrepaymentModelBase
+        model_class = import_class_from_module(module_name, class_name, expected_base_class=PrepaymentModelBase)
+    except (ImportError, AttributeError, TypeError) as e:
+        raise ValueError(f"Failed to load prepayment model class '{class_name}' from module '{module_name}': {e}")
+
+    if not hasattr(model_class, '__init__'):
+        raise NotImplementedError(f"Class '{class_name}' does not have an '__init__' method.")
+
+    # Instantiate the model with its specific parameters
+    try:
+        return model_class(**model_params)
+    except TypeError as e:
+        raise TypeError(f"Error instantiating prepayment model '{class_name}' with params {model_params}: {e}")

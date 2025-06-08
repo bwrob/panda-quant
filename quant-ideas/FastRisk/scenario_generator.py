@@ -27,7 +27,7 @@ class SimpleRandomScenarioGenerator(ScenarioGeneratorBase):
                  # Shock for individual points on a credit spread curve
                  credit_spread_point_shock_std_dev: float = 0.0005,
 
-                 default_rate_shock_std_dev: float = 0.0010, # 10 bps
+                 default_rate_shock_std_dev: float = 0.0020, # 10 bps
                  default_s0_shock_config: tuple[str, float] = ('normal_relative', 0.01), # 1% relative normal shock
                  default_vol_shock_config: tuple[str, float] = ('normal_absolute', 0.01), # 1% absolute normal shock
                  random_seed: int = None):
@@ -114,6 +114,7 @@ class SimpleRandomScenarioGenerator(ScenarioGeneratorBase):
             if factor_name in self.base_rates_map:
                 shock_std_dev = self.rate_factor_shock_std_dev_map.get(factor_name, self.default_rate_shock_std_dev)
                 shocks = self.rng.normal(loc=0.0, scale=shock_std_dev, size=num_scenarios)
+                shocks[0] = 0.0 # Ensure first scenario is always the base value
                 factor_column = base_value + shocks
             
             elif factor_name in self.base_s0_map: # S0, or other single-value factors like DIVYIELD, CS_FLAT
@@ -122,9 +123,11 @@ class SimpleRandomScenarioGenerator(ScenarioGeneratorBase):
                 if shock_type.lower() == 'normal_relative': # shock_param is percentage
                     actual_std_dev = shock_param * abs(base_value) if abs(base_value) > 1e-9 else shock_param
                     shocks = self.rng.normal(loc=0.0, scale=actual_std_dev, size=num_scenarios)
+                    shocks[0] = 0.0 # Ensure first scenario is always the base value
                     factor_column = base_value + shocks
                 elif shock_type.lower() == 'normal_absolute': # shock_param is absolute std_dev
                     shocks = self.rng.normal(loc=0.0, scale=shock_param, size=num_scenarios)
+                    shocks[0] = 0.0 # Ensure first scenario is always the base value
                     factor_column = base_value + shocks
                 elif shock_type.lower() == 'uniform_relative': # shock_param is percentage half-width
                     half_width = shock_param * abs(base_value) if abs(base_value) > 1e-9 else shock_param
@@ -141,15 +144,18 @@ class SimpleRandomScenarioGenerator(ScenarioGeneratorBase):
                 if shock_type.lower() == 'normal_relative':
                     actual_std_dev = shock_param * abs(base_value) if abs(base_value) > 1e-9 else shock_param
                     shocks = self.rng.normal(loc=0.0, scale=actual_std_dev, size=num_scenarios)
+                    shocks[0] = 0.0 # Ensure first scenario is always the base value
                     factor_column = base_value + shocks
                 elif shock_type.lower() == 'normal_absolute':
                     shocks = self.rng.normal(loc=0.0, scale=shock_param, size=num_scenarios)
+                    shocks[0] = 0.0 # Ensure first scenario is always the base value
                     factor_column = base_value + shocks
                 else: raise ValueError(f"Unsupported shock_type: {shock_type} for Vol factor {factor_name}")
                 factor_column = np.maximum(factor_column, 1e-6) # Vol must be positive
 
             elif factor_name in self.base_credit_spread_points_map: # Point on a credit spread curve
                 shocks = self.rng.normal(loc=0.0, scale=self.credit_spread_point_shock_std_dev, size=num_scenarios)
+                shocks[0] = 0.0 # Ensure first scenario is always the base value
                 factor_column = base_value + shocks
                 factor_column = np.maximum(factor_column, 0.0) # Spreads must be non-negative
             
@@ -166,58 +172,3 @@ class SimpleRandomScenarioGenerator(ScenarioGeneratorBase):
              return np.array([]).reshape(num_scenarios, 0), []
              
         return np.hstack(all_scenario_columns), factors_to_generate
-
-
-class SimpleScaledRandomScenarioGenerator(ScenarioGeneratorBase):
-    """
-    Wraps an existing SimpleRandomScenarioGenerator and scales the shocks
-    of the generated scenarios by a given scalar.
-    """
-    def __init__(self, base_generator: SimpleRandomScenarioGenerator, shock_scalar: float):
-        if not isinstance(base_generator, SimpleRandomScenarioGenerator):
-            raise TypeError("base_generator must be an instance of SimpleRandomScenarioGenerator.")
-        self.base_generator = base_generator
-        self.shock_scalar = shock_scalar
-
-    def generate_scenarios(self, num_scenarios: int, target_factor_names: list[str] = None) -> tuple[np.ndarray, list[str]]:
-        """
-        Generates scenarios by first getting scenarios from the base generator,
-        then scaling the shocks relative to their base values.
-        """
-        # Get initial scenarios from the base generator
-        initial_scenarios, factor_names = self.base_generator.generate_scenarios(num_scenarios, target_factor_names)
-
-        if not factor_names: # No factors were generated
-            return initial_scenarios, factor_names
-
-        scaled_scenarios_list = []
-
-        for i, factor_name in enumerate(factor_names):
-            base_value = self.base_generator.get_base_value_for_factor(factor_name)
-            
-            # This check should ideally not be needed if base_generator.generate_scenarios
-            # only returns factors for which it has base values.
-            if base_value is None:
-                # print(f"Warning: Could not find base value for factor '{factor_name}' in scaled generator. Using original shock.")
-                scaled_factor_column = initial_scenarios[:, i]
-            else:
-                original_factor_column = initial_scenarios[:, i]
-                shocks = original_factor_column - base_value
-                scaled_shocks = shocks * self.shock_scalar
-                scaled_factor_column = base_value + scaled_shocks
-
-                # Ensure non-negativity for certain factor types after scaling
-                if "S0" in factor_name.upper() or "VOL" in factor_name.upper():
-                    scaled_factor_column = np.maximum(scaled_factor_column, 1e-6)
-                elif "_CS" in factor_name.upper() or "DIVYIELD" in factor_name.upper() or "RATE" in factor_name.upper() or "_IR_" in factor_name.upper():
-                    # Rates, spreads, div yields generally non-negative. Some rate models allow negative.
-                    # For simplicity here, floor at 0.
-                    scaled_factor_column = np.maximum(scaled_factor_column, 0.0)
-
-
-            scaled_scenarios_list.append(scaled_factor_column[:, np.newaxis])
-        
-        if not scaled_scenarios_list:
-            return np.array([]).reshape(num_scenarios, 0), []
-
-        return np.hstack(scaled_scenarios_list), factor_names

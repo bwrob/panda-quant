@@ -56,8 +56,8 @@ class QuantLibBondStaticBase(ProductStaticBase):
         self,
         valuation_date, maturity_date, coupon_rate: float,
         face_value: float = 100.0, freq: int = 2,
-        calendar = None, day_count = None,
-        business_convention: int = None, settlement_days: int = 0,
+        calendar: str = 'target', day_count: str = 'actualactualisda',
+        business_convention: str = 'following', settlement_days: int = 0,
         currency: str = "USD", index_stub: str = "GENERIC_IR",
         credit_spread_curve_name: str = None
     ):
@@ -89,7 +89,14 @@ class QuantLibBondStaticBase(ProductStaticBase):
         elif isinstance(day_count, ql.DayCounter): self.day_count_ql = day_count
         else: self.day_count_ql = ql.ActualActual(ql.ActualActual.ISDA)
 
-        self.business_convention_ql: int = business_convention if business_convention is not None else ql.Following
+        if isinstance(business_convention, str):
+            if business_convention.lower() == "following": self.business_convention_ql = ql.Following
+            elif business_convention.lower() == "modifiedfollowing": self.business_convention_ql = ql.ModifiedFollowing
+            elif business_convention.lower() == "preceding": self.business_convention_ql = ql.Preceding
+            elif business_convention.lower() == "modifiedpreceding": self.business_convention_ql = ql.ModifiedPreceding
+            else: self.business_convention_ql = ql.Following
+        elif isinstance(business_convention, int):
+            self.business_convention_ql: int = business_convention if business_convention is not None else ql.Following
 
         self.ql_valuation_date: ql.Date = ql.Date(self.valuation_date_py.day, self.valuation_date_py.month, self.valuation_date_py.year)
         self.ql_maturity_date: ql.Date = ql.Date(self.maturity_date_py.day, self.maturity_date_py.month, self.maturity_date_py.year)
@@ -108,19 +115,29 @@ class QuantLibBondStaticBase(ProductStaticBase):
 
     @classmethod
     def from_dict(cls, params: dict) -> 'QuantLibBondStaticBase':
-        return cls(
-            valuation_date=params['valuation_date'],
-            maturity_date=params['maturity_date'],
-            coupon_rate=float(params['coupon_rate']),
-            face_value=float(params.get('face_value', 100.0)),
-            freq=int(params.get('freq', 2)),
-            calendar=params.get('calendar'), day_count=params.get('day_count'),
-            business_convention=params.get('business_convention'),
-            settlement_days=int(params.get('settlement_days', 0)),
-            currency=params.get('currency', "USD"),
-            index_stub=params.get('index_stub', "GENERIC_IR"),
-            credit_spread_curve_name=params.get('credit_spread_curve_name', None)
-        )
+        # Validate required fields
+        required_fields = ['valuation_date', 'maturity_date', 'coupon_rate']
+        missing = [f for f in required_fields if f not in params or params[f] is None]
+        if missing:
+            raise ValueError(f"Missing required field(s) for QuantLibBondStaticBase: {', '.join(missing)}. "
+                             "Required fields are: valuation_date, maturity_date, coupon_rate.")
+        
+        # Convert numeric fields
+        converted_params = params.copy()
+        # Remove product_type that are not needed for QuantLibBondStaticBase
+        converted_params.pop('product_type', None)
+        converted_params.pop('actual_rate_pillars', None)
+
+        if 'coupon_rate' in converted_params:
+            converted_params['coupon_rate'] = float(converted_params['coupon_rate'])
+        if 'face_value' in converted_params:
+            converted_params['face_value'] = float(converted_params['face_value'])
+        if 'freq' in converted_params:
+            converted_params['freq'] = int(converted_params['freq'])
+        if 'settlement_days' in converted_params:
+            converted_params['settlement_days'] = int(converted_params['settlement_days'])
+            
+        return cls(**converted_params)
 
     def to_dict(self) -> dict:
         product_type = 'VanillaBond'
@@ -140,18 +157,26 @@ class QuantLibBondStaticBase(ProductStaticBase):
         }
         return data
 
-
 class CallableBondStaticBase(QuantLibBondStaticBase):
     def __init__(
         self, valuation_date, maturity_date, coupon_rate: float,
-        call_dates: list, call_prices: list[float], face_value: float = 100.0,
-        freq: int = 2, calendar = None, day_count = None,
-        business_convention: int = None, settlement_days: int = 0,
+        call_dates: list = None, call_prices: list[float] = None, 
+        face_value: float = 100.0, freq: int = 2, 
+        calendar: str = 'target', day_count: str = 'actualactualisda',
+        business_convention: str = 'following', settlement_days: int = 0,
         currency: str = "USD", index_stub: str = "GENERIC_IR",
-        credit_spread_curve_name: str = None ):
+        credit_spread_curve_name: str = None
+    ):
         super().__init__(valuation_date, maturity_date, coupon_rate, face_value, freq,
                          calendar, day_count, business_convention, settlement_days,
                          currency, index_stub, credit_spread_curve_name)
+        
+        # Handle None defaults
+        if call_dates is None:
+            call_dates = []
+        if call_prices is None:
+            call_prices = []
+            
         self.call_dates_py: list[date] = _parse_date_list(call_dates)
         self.call_prices_py: list[float] = [float(p) for p in call_prices]
         self.call_schedule: ql.CallabilitySchedule = ql.CallabilitySchedule()
@@ -168,18 +193,31 @@ class CallableBondStaticBase(QuantLibBondStaticBase):
 
     @classmethod
     def from_dict(cls, params: dict) -> 'CallableBondStaticBase':
-        return cls(
-            valuation_date=params['valuation_date'], maturity_date=params['maturity_date'],
-            coupon_rate=float(params['coupon_rate']),
-            call_dates=params.get('call_dates', []), call_prices=params.get('call_prices',[]),
-            face_value=float(params.get('face_value', 100.0)), freq=int(params.get('freq', 2)),
-            calendar=params.get('calendar'), day_count=params.get('day_count'),
-            business_convention=params.get('business_convention'),
-            settlement_days=int(params.get('settlement_days', 0)),
-            currency=params.get('currency', "USD"),
-            index_stub=params.get('index_stub', "GENERIC_IR"),
-            credit_spread_curve_name=params.get('credit_spread_curve_name', None)
-        )
+        # Validate required fields
+        required_fields = ['valuation_date', 'maturity_date', 'coupon_rate']
+        missing = [f for f in required_fields if f not in params or params[f] is None]
+        if missing:
+            raise ValueError(f"Missing required field(s) for CallableBondStaticBase: {', '.join(missing)}. "
+                             "Required fields are: valuation_date, maturity_date, coupon_rate.")
+        
+        # Convert numeric fields
+        converted_params = params.copy()
+        # Remove product_type that are not needed for CallableBondStaticBase
+        converted_params.pop('product_type', None)
+        converted_params.pop('actual_rate_pillars', None)
+
+        if 'coupon_rate' in converted_params:
+            converted_params['coupon_rate'] = float(converted_params['coupon_rate'])
+        if 'face_value' in converted_params:
+            converted_params['face_value'] = float(converted_params['face_value'])
+        if 'freq' in converted_params:
+            converted_params['freq'] = int(converted_params['freq'])
+        if 'settlement_days' in converted_params:
+            converted_params['settlement_days'] = int(converted_params['settlement_days'])
+        if 'call_prices' in converted_params and converted_params['call_prices']:
+            converted_params['call_prices'] = [float(p) for p in converted_params['call_prices']]
+            
+        return cls(**converted_params)
 
     def to_dict(self) -> dict:
       base = super().to_dict(); base.update({
@@ -192,10 +230,12 @@ class ConvertibleBondStaticBase(QuantLibBondStaticBase):
     def __init__(
         self, valuation_date, issue_date, maturity_date, coupon_rate: float,
         conversion_ratio: float, face_value: float = 100.0, freq: int = 2,
-        settlement_days: int = 0, calendar = None, day_count = None,
-        business_convention: int = None, exercise_type: str = 'EuropeanAtMaturity',
-        currency: str = "USD", index_stub: str = "GENERIC_IR", underlying_symbol: str = None,
-        credit_spread_curve_name: str = None ):
+        settlement_days: int = 0, calendar: str = 'target', 
+        day_count: str = 'actualactualisda', business_convention: str = 'following', 
+        exercise_type: str = 'EuropeanAtMaturity', currency: str = "USD", 
+        index_stub: str = "GENERIC_IR", underlying_symbol: str = None,
+        credit_spread_curve_name: str = None
+    ):
         super().__init__(valuation_date, maturity_date, coupon_rate, face_value, freq, calendar,
                          day_count, business_convention, settlement_days, currency, index_stub,
                          credit_spread_curve_name)
@@ -223,20 +263,33 @@ class ConvertibleBondStaticBase(QuantLibBondStaticBase):
 
     @classmethod
     def from_dict(cls, params: dict) -> 'ConvertibleBondStaticBase':
-        return cls(
-            valuation_date=params['valuation_date'], issue_date=params['issue_date'],
-            maturity_date=params['maturity_date'], coupon_rate=float(params['coupon_rate']),
-            conversion_ratio=float(params['conversion_ratio']),
-            face_value=float(params.get('face_value', 100.0)), freq=int(params.get('freq', 2)),
-            settlement_days=int(params.get('settlement_days', 0)),
-            calendar=params.get('calendar'), day_count=params.get('day_count'),
-            business_convention=params.get('business_convention'),
-            exercise_type=params.get('exercise_type', 'EuropeanAtMaturity'),
-            currency=params.get('currency', "USD"),
-            index_stub=params.get('index_stub', "GENERIC_IR"),
-            underlying_symbol=params.get('underlying_symbol'),
-            credit_spread_curve_name=params.get('credit_spread_curve_name', None)
-        )
+        # Validate required fields
+        required_fields = ['valuation_date', 'issue_date', 'maturity_date', 'coupon_rate', 'conversion_ratio']
+        missing = [f for f in required_fields if f not in params or params[f] is None]
+        if missing:
+            raise ValueError(f"Missing required field(s) for ConvertibleBondStaticBase: {', '.join(missing)}. "
+                             "Required fields are: valuation_date, issue_date, maturity_date, coupon_rate, conversion_ratio.")
+        
+        
+        # Convert numeric fields
+        converted_params = params.copy()
+
+        # Remove product_type that are not needed for CallableBondStaticBase
+        converted_params.pop('product_type', None)
+        converted_params.pop('actual_rate_pillars', None)
+        
+        if 'coupon_rate' in converted_params:
+            converted_params['coupon_rate'] = float(converted_params['coupon_rate'])
+        if 'conversion_ratio' in converted_params:
+            converted_params['conversion_ratio'] = float(converted_params['conversion_ratio'])
+        if 'face_value' in converted_params:
+            converted_params['face_value'] = float(converted_params['face_value'])
+        if 'freq' in converted_params:
+            converted_params['freq'] = int(converted_params['freq'])
+        if 'settlement_days' in converted_params:
+            converted_params['settlement_days'] = int(converted_params['settlement_days'])
+            
+        return cls(**converted_params)
 
     def to_dict(self) -> dict:
         base = super().to_dict(); base.update({
@@ -248,14 +301,16 @@ class ConvertibleBondStaticBase(QuantLibBondStaticBase):
 
 class EuropeanOptionStatic(ProductStaticBase):
     def __init__(self, valuation_date, expiry_date, strike_price: float, option_type: str,
-                 day_count_convention = None, currency: str = "USD", underlying_symbol: str = None):
+                 day_count_convention: str = 'actual365fixed', currency: str = "USD", 
+                 underlying_symbol: str = None):
         super().__init__(valuation_date)
         self.expiry_date_py: date = _parse_date_input(expiry_date)
         self.strike_price: float = float(strike_price)
         self.currency: str = currency
         self.underlying_symbol: str = underlying_symbol
 
-        if option_type.lower() not in ['call', 'put']: raise ValueError("Option type must be 'call' or 'put'")
+        if option_type.lower() not in ['call', 'put']: 
+            raise ValueError("Option type must be 'call' or 'put'")
         self.option_type: str = option_type.lower()
 
         ql_valuation_date = ql.Date(self.valuation_date_py.day, self.valuation_date_py.month, self.valuation_date_py.year)
@@ -273,12 +328,23 @@ class EuropeanOptionStatic(ProductStaticBase):
 
     @classmethod
     def from_dict(cls, params: dict) -> 'EuropeanOptionStatic':
-        return cls(
-            valuation_date=params['valuation_date'], expiry_date=params['expiry_date'],
-            strike_price=float(params['strike_price']), option_type=params['option_type'],
-            day_count_convention=params.get('day_count_convention'),
-            currency=params.get('currency', "USD"),
-            underlying_symbol=params.get('underlying_symbol'))
+        # Validate required fields
+        required_fields = ['valuation_date', 'expiry_date', 'strike_price', 'option_type']
+        missing = [f for f in required_fields if f not in params or params[f] is None]
+        if missing:
+            raise ValueError(f"Missing required field(s) for EuropeanOptionStatic: {', '.join(missing)}. "
+                             "Required fields are: valuation_date, expiry_date, strike_price, option_type.")
+
+        # Convert numeric fields
+        converted_params = params.copy()
+        # Remove product_type that are not needed for EuropeanOptionStatic
+        converted_params.pop('product_type', None)
+        converted_params.pop('actual_rate_pillars', None)
+        
+        if 'strike_price' in converted_params:
+            converted_params['strike_price'] = float(converted_params['strike_price'])
+            
+        return cls(**converted_params)
 
     def to_dict(self) -> dict:
         return {
@@ -297,16 +363,16 @@ class MBSPoolStatic(ProductStaticBase):
                  issue_date: date,
                  original_balance: float,
                  current_balance: float,
-                 wac: float, # Weighted Average Coupon
-                 pass_through_rate: float, # Coupon passed to investors
+                 wac: float,
+                 pass_through_rate: float,
                  original_term_months: int,
-                 age_months: int, # Seasoning
-                 prepayment_model_type: str, # e.g., "CPR", "PSA"
-                 prepayment_rate_param: float, # CPR value or PSA multiplier
+                 age_months: int,
+                 prepayment_model_type: str = "CPR",
+                 prepayment_rate_param: float = 0.0,
                  delay_days: int = 0,
                  currency: str = "USD",
-                 index_stub: str = "GENERIC_IR", # For discount curve
-                 credit_spread_curve_name: str = None): # For discount curve
+                 index_stub: str = "GENERIC_IR",
+                 credit_spread_curve_name: str = None):
         super().__init__(valuation_date)
         self.issue_date_py: date = _parse_date_input(issue_date)
         self.original_balance: float = float(original_balance)
@@ -332,22 +398,21 @@ class MBSPoolStatic(ProductStaticBase):
 
     @classmethod
     def from_dict(cls, params: dict) -> 'MBSPoolStatic':
-        return cls(
-            valuation_date=params['valuation_date'],
-            issue_date=params['issue_date'],
-            original_balance=float(params['original_balance']),
-            current_balance=float(params['current_balance']),
-            wac=float(params['wac']),
-            pass_through_rate=float(params['pass_through_rate']),
-            original_term_months=int(params['original_term_months']),
-            age_months=int(params['age_months']),
-            prepayment_model_type=params.get('prepayment_model_type', "CPR"),
-            prepayment_rate_param=params.get('prepayment_rate_param', 0.0),
-            delay_days=int(params.get('delay_days', 0)),
-            currency=params.get('currency', "USD"),
-            index_stub=params.get('index_stub', "GENERIC_IR"),
-            credit_spread_curve_name=params.get('credit_spread_curve_name', None)
-        )
+        # Convert numeric fields
+        converted_params = params.copy()
+        numeric_fields = ['original_balance', 'current_balance', 'wac', 'pass_through_rate', 
+                         'prepayment_rate_param', 'delay_days']
+        int_fields = ['original_term_months', 'age_months', 'delay_days']
+        
+        for field in numeric_fields:
+            if field in converted_params:
+                converted_params[field] = float(converted_params[field])
+        
+        for field in int_fields:
+            if field in converted_params:
+                converted_params[field] = int(converted_params[field])
+                
+        return cls(**converted_params)
 
     def to_dict(self) -> dict:
         return {
