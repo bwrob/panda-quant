@@ -106,7 +106,7 @@ def run_full_price_strips(
 if __name__ == "__main__":
     start_time = time.time()
     print(f"Running demo to generate full price strips...")
-    price_strips = run_full_price_strips(num_instruments=10000, num_scenarios=2000, num_workers=24)
+    price_strips = run_full_price_strips(num_instruments=100, num_scenarios=2000, num_workers=24)
     print(f"\nGenerated price strips for {len(price_strips)} instruments")
     total_time= time.time() - start_time
     print(f"Total time taken: {total_time:.2f} seconds")

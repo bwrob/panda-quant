@@ -635,7 +635,7 @@ class TFFConfigurationFactory:
 
             elif isinstance(product_static, ConvertibleBondStaticBase):
                 pricer_cfg_worker['bond_pricer_config']['method'] = 'convertible_binomial'
-                pricer_cfg_worker['bond_pricer_config']['convertible_engine_steps'] = instrument_pricer_params.get('conv_engine_steps', 50)
+                pricer_cfg_worker['bond_pricer_config']['convertible_engine_steps'] = instrument_pricer_params.get('conv_engine_steps', 128)
 
                 if not product_static.underlying_symbol: raise ValueError("Convertible needs 'underlying_symbol'.")
                 s0_fn_cb = f"{product_static.currency}_{product_static.underlying_symbol}_S0"
@@ -720,7 +720,7 @@ class InstrumentProcessor:
             grid_steps = pricer_params.get('g2_grid_steps', 32)
             return QuantLibBondPricer(product_static, method='g2', grid_steps=grid_steps)
         elif isinstance(product_static, ConvertibleBondStaticBase):
-            engine_steps = pricer_params.get('conv_engine_steps', 50)
+            engine_steps = pricer_params.get('conv_engine_steps', 128)
             return QuantLibBondPricer(product_static, method='convertible_binomial', convertible_engine_steps=engine_steps)
         elif isinstance(product_static, MBSPoolStatic): # NEW
             prepayment_model_type = product_static.prepayment_model_type
@@ -827,7 +827,7 @@ class InstrumentProcessor:
                      raise ValueError("Empty scenario slice for TFF fitting.")
 
                 s_t = time.time()
-                model_tff, _, _, rmse_tff, norm_params_tff = tff_calibrator.sample_and_fit(
+                model_tff, _, _, rmse_tff, norm_params_tff, base_value_tff, base_tff_value = tff_calibrator.sample_and_fit(
                     full_market_scenarios_for_tff_factors=scenarios_for_this_tff,
                     n_train=tff_config_from_spec.get('n_train', 64),
                     n_test=tff_config_from_spec.get('n_test', 8),
@@ -843,7 +843,8 @@ class InstrumentProcessor:
                         'tff_raw_input_names': tff_inputs["tff_input_raw_factor_names"],
                         'tff_normalization_params': norm_params_tff,
                         'tff_option_feature_order': tff_inputs["option_feature_order"],
-                        'tff_rmse': rmse_tff, 'tff_fit_time_seconds': fit_time
+                        'tff_rmse': rmse_tff, 'tff_fit_time_seconds': fit_time,
+                        'tff_base_value': base_value_tff, 'tff_base_tff_value': base_tff_value
                     })
                     if tff_inputs["fixed_pricer_params_for_tff_training"]:
                         registry_entry['tff_fixed_pricer_params'] = tff_inputs["fixed_pricer_params_for_tff_training"]
@@ -1051,7 +1052,7 @@ class PortfolioBuilder:
                         final_pricer_kwargs.update(cb_full_kwargs_needed)
                         final_full_pricer_instance = QuantLibBondPricer(
                             product_static_object, method='convertible_binomial',
-                            convertible_engine_steps=current_pricer_params.get('conv_engine_steps', 50)
+                            convertible_engine_steps=current_pricer_params.get('conv_engine_steps', 128)
                         )
                     elif isinstance(product_static_object, QuantLibBondStaticBase):
                         final_full_pricer_instance = QuantLibBondPricer(product_static_object, method='discount')
@@ -1565,7 +1566,7 @@ class PortfolioBuilder:
                         final_pricer_kwargs.update(cb_full_kwargs_needed)
                         final_full_pricer_instance = QuantLibBondPricer(
                             product_static_object, method='convertible_binomial',
-                            convertible_engine_steps=current_pricer_params.get('conv_engine_steps', 50)
+                            convertible_engine_steps=current_pricer_params.get('conv_engine_steps', None)
                         )
                     elif isinstance(product_static_object, QuantLibBondStaticBase):
                         final_full_pricer_instance = QuantLibBondPricer(product_static_object, method='discount')

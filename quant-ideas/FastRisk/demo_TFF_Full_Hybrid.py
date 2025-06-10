@@ -59,11 +59,11 @@ def run_hybrid_var_demo(
     all_underlying_symbols = list(set([f"STOCK_{i%10}" for i in range(num_instruments_to_generate)]))
     base_s0_map_gen, base_vol_map_gen, base_other_map_gen = {}, {}, {}
     for sym in all_underlying_symbols:
-        base_s0_map_gen[f"{DEMO_CURRENCY}_{sym}_S0"] = 90 + np.random.rand() * 20
-        base_vol_map_gen[f"{DEMO_CURRENCY}_{sym}_VOL"] = 0.20 + np.random.rand() * 0.1
-        base_vol_map_gen[f"{DEMO_CURRENCY}_{sym}_EQVOL"] = 0.20 + np.random.rand() * 0.1
-        base_other_map_gen[f"{DEMO_CURRENCY}_{sym}_DIVYIELD"] = 0.01 + np.random.rand() * 0.01
-        base_other_map_gen[f"{DEMO_CURRENCY}_{sym}_CS"] = 0.01 + np.random.rand() * 0.01
+        base_s0_map_gen[f"{DEMO_CURRENCY}_{sym}_S0"] = round(90 + np.random.rand() * 20)
+        base_vol_map_gen[f"{DEMO_CURRENCY}_{sym}_VOL"] = round(0.20 + np.random.rand() * 0.1, 2)
+        base_vol_map_gen[f"{DEMO_CURRENCY}_{sym}_EQVOL"] = round(0.20 + np.random.rand() * 0.1, 2)
+        base_other_map_gen[f"{DEMO_CURRENCY}_{sym}_DIVYIELD"] = round(0.01 + np.random.rand() * 0.01, 2)
+        base_other_map_gen[f"{DEMO_CURRENCY}_{sym}_CS"] = round(0.01 + np.random.rand() * 0.01, 2)
     merged_s0_map_gen = {**base_s0_map_gen, **base_other_map_gen}
 
     scen_gen_var = SimpleRandomScenarioGenerator(
@@ -110,6 +110,20 @@ def run_hybrid_var_demo(
         print("\n--- Path 1: Full Revaluation ---")
         time_full_path_start = time.time()
         full_instrument_defs = [dict(d, pricing_preference="FULL") for d in instrument_definitions]
+        # For convertibles, populate the correct vol, dividend yield, and credit spread from base maps
+        for d in full_instrument_defs:
+            if d["product_type"] == "ConvertibleBond":
+                # These should be in pricer_params, not params
+                if "pricer_params" not in d:
+                    d["pricer_params"] = {}
+                
+                d["pricer_params"]["equity_volatility"] = base_vol_map_gen[f"{DEMO_CURRENCY}_{d['params']['underlying_symbol']}_EQVOL"]
+                d["pricer_params"]["dividend_yield"] = base_other_map_gen[f"{DEMO_CURRENCY}_{d['params']['underlying_symbol']}_DIVYIELD"]
+                d["pricer_params"]["credit_spread"] = base_other_map_gen[f"{DEMO_CURRENCY}_{d['params']['underlying_symbol']}_CS"]
+                
+                # Also ensure S0 is set correctly for convertibles
+                d["pricer_params"]["s0_val"] = base_s0_map_gen[f"{DEMO_CURRENCY}_{d['params']['underlying_symbol']}_S0"]
+        
         iproc_full = InstrumentProcessor(
             scen_gen_var, val_date, tenors, default_g2_params, default_bs_rfr, default_bs_div, False, 0
         )
@@ -120,12 +134,14 @@ def run_hybrid_var_demo(
         
         portfolio_obj_full = portfolio_full_dict["HybridClient"]
         
+        batch_size = max(1, num_instruments_to_generate // 100)  # Ensure reasonable batch size
         strips = generate_price_strips(
             instrument_specs=full_instrument_defs,
             global_market_scenarios=var_scenarios,
             global_factor_names=var_factor_names,
             iproc=iproc_full,
-            num_workers=os.cpu_count()
+            num_workers=os.cpu_count(),
+            batch_size=batch_size
         )
         
         portfolio_values_full_strips = portfolio_obj_full.price_portfolio_from_strips(strips)
@@ -158,7 +174,7 @@ def run_hybrid_var_demo(
         tff_model_registry = iproc_tff.process_instruments(tff_instrument_defs, tff_domain_scenarios, tff_domain_factor_names, tff_batch_size)
         time_tff_calib_end = time.time()
         total_time_tff_calib = time_tff_calib_end - time_tff_calib_start
-
+        
         time_tff_inference_start = time.time()
         tff_portfolio_specs = generate_portfolio_specs_for_serialization(
             holdings_data, tff_model_registry, tff_instrument_defs
@@ -337,6 +353,122 @@ def run_hybrid_var_demo(
     if run_hybrid:
         print(f"Number of Critical Scenarios Revalued: {num_critical_scenarios:,} / {num_var_scenarios:,}")
     
+    
+    # Display table of difference between TFF and Full pricers from model registry
+    if run_full_reval and 'full_model_registry' in locals():
+        print("\n--- TFF vs Full Pricer Comparison ---")
+        header = f"{'Instrument ID':<25} | {'Product Type':<15} | {'TFF Fit Time':<12} | {'TFF RMSE':<10} | {'TFF Base':<15} | {'Full Base':<15} | {'Base Diff %':<12} | {'Status':<10}"
+        print(header)
+        print("-" * len(header))
+        
+        count = 0
+        max_to_display = 15  # Limit display for readability
+        
+        for instrument_id in sorted(tff_model_registry.keys()):
+            if count >= max_to_display:
+                print("... (showing first 15 instruments, use full registry for complete analysis)")
+                break
+            
+            tff_model = tff_model_registry.get(instrument_id, {})
+            full_model = full_model_registry.get(instrument_id, {})
+            
+            # Get basic info
+            product_type = next((d['product_type'] for d in instrument_definitions if d['instrument_id'] == instrument_id), 'Unknown')
+            
+            # TFF metrics
+            tff_fit_time = tff_model.get('tff_fit_time_seconds', 'N/A')
+            tff_rmse = tff_model.get('tff_rmse', 'N/A')
+            tff_error = tff_model.get('error_tff_calibration')
+            
+            # Get base scenario values for comparison
+            base_scenario = var_scenarios[0:1]  # First scenario
+            tff_base_value = 'N/A'
+            full_base_value = 'N/A'
+            base_diff_pct = 'N/A'
+            status = 'OK'
+            
+            try:
+                # Get TFF base value
+                tff_instance = tff_model.get('tff_instance')
+                if tff_instance and hasattr(tff_instance, 'price_scenarios'):
+                    tff_price = tff_instance.price_scenarios(
+                        raw_market_scenarios=base_scenario,
+                        scenario_factor_names=var_factor_names,
+                        rate_pillars=tenors
+                    )[0]
+                    tff_base_value = tff_price
+                
+                # Get Full base value
+                full_instance = full_model.get('pricer_instance') or full_model.get('full_pricer_instance')
+                if full_instance and hasattr(full_instance, 'price_scenarios'):
+                    full_price = full_instance.price_scenarios(
+                        raw_market_scenarios=base_scenario,
+                        scenario_factor_names=var_factor_names,
+                        rate_pillars=tenors
+                    )[0]
+                    full_base_value = full_price
+                
+                # Calculate percentage difference
+                if isinstance(tff_base_value, (int, float)) and isinstance(full_base_value, (int, float)) and full_base_value != 0:
+                    base_diff_pct = 100 * (tff_base_value - full_base_value) / full_base_value
+            
+            except Exception as e:
+                status = 'ERROR'
+                print(f"    Error pricing {instrument_id}: {str(e)[:50]}...")
+            
+            # Handle calibration errors
+            if tff_error:
+                status = 'TFF_FAIL'
+                tff_fit_time = 'ERROR'
+                tff_rmse = 'ERROR'
+            
+            # Format values
+            fit_time_str = f"{tff_fit_time:.4f}s" if isinstance(tff_fit_time, (int, float)) else str(tff_fit_time)
+            rmse_str = f"{tff_rmse:.6f}" if isinstance(tff_rmse, (int, float)) else str(tff_rmse)
+            tff_base_str = f"{tff_base_value:,.4f}" if isinstance(tff_base_value, (int, float)) else str(tff_base_value)
+            full_base_str = f"{full_base_value:,.4f}" if isinstance(full_base_value, (int, float)) else str(full_base_value)
+            diff_str = f"{base_diff_pct:+.3f}%" if isinstance(base_diff_pct, (int, float)) else str(base_diff_pct)
+            
+            print(f"{instrument_id:<25} | {product_type:<15} | {fit_time_str:<12} | {rmse_str:<10} | {tff_base_str:<15} | {full_base_str:<15} | {diff_str:<12} | {status:<10}")
+            count += 1
+        
+        # Summary statistics
+        print(f"\n--- TFF vs Full Summary Statistics ---")
+        
+        # Calculate aggregate metrics
+        successful_tff = [m for m in tff_model_registry.values() if not m.get('error_tff_calibration')]
+        failed_tff = [m for m in tff_model_registry.values() if m.get('error_tff_calibration')]
+        
+        total_instruments = len(tff_model_registry)
+        success_rate = len(successful_tff) / total_instruments if total_instruments > 0 else 0
+        
+        print(f"Total Instruments: {total_instruments:,}")
+        print(f"TFF Calibration Success Rate: {success_rate:.1%} ({len(successful_tff):,}/{total_instruments:,})")
+        
+        if successful_tff:
+            fit_times = [m.get('tff_fit_time_seconds', 0) for m in successful_tff if isinstance(m.get('tff_fit_time_seconds'), (int, float))]
+            rmse_values = [m.get('tff_rmse', 0) for m in successful_tff if isinstance(m.get('tff_rmse'), (int, float))]
+            
+            if fit_times:
+                print(f"Average TFF Fit Time: {np.mean(fit_times):.4f}s (min: {np.min(fit_times):.4f}s, max: {np.max(fit_times):.4f}s)")
+            if rmse_values:
+                print(f"Average TFF RMSE: {np.mean(rmse_values):.6f} (min: {np.min(rmse_values):.6f}, max: {np.max(rmse_values):.6f})")
+        
+        if failed_tff:
+            print(f"\nFailed TFF Calibrations ({len(failed_tff):,}):")
+            for i, failed_model in enumerate(failed_tff[:5]):  # Show first 5 failures
+                error_msg = str(failed_model.get('error_tff_calibration', 'Unknown error'))
+                if len(error_msg) > 60:
+                    error_msg = error_msg[:57] + "..."
+                # Find instrument ID for this failed model
+                failed_id = next((k for k, v in tff_model_registry.items() if v == failed_model), 'Unknown')
+                print(f"  {failed_id}: {error_msg}")
+            if len(failed_tff) > 5:
+                print(f"  ... and {len(failed_tff) - 5} more failures")
+    
+    else:
+        print("\n--- TFF vs Full Comparison SKIPPED (Full revaluation not run) ---")
+
     print("\n--- End of Hybrid VaR Comparison Demo ---")
     
     return {
@@ -352,7 +484,7 @@ if __name__ == "__main__":
     results = []
     num_of_trials = 1
     
-    num_instruments_to_generate = 100000
+    num_instruments_to_generate = 40
     # set tff_batch_size such that no more than 100 batches are created
     tff_batch_size = max(1, num_instruments_to_generate // 100)
     print(f"Using tff_batch_size: {tff_batch_size:,} (for {num_instruments_to_generate:,} instruments)")
@@ -364,12 +496,12 @@ if __name__ == "__main__":
             num_var_scenarios=2000,
             n_tff_domain_scenarios=200,
             n_tff_fitting_samples=50,
-            hybrid_critical_percentile=0.02,
+            hybrid_critical_percentile=0.015,
             num_tff_workers=os.cpu_count(),
             tff_batch_size=tff_batch_size,
             random_seed=i,
             # NEW: Choose which methods to run
-            run_full_reval=False,   # Set to True to enable full revaluation
+            run_full_reval=True,   # Set to True to enable full revaluation
             run_tff_only=True,      # Set to True to enable TFF-only
             run_hybrid=True        # Set to True to enable hybrid (requires TFF)
         )

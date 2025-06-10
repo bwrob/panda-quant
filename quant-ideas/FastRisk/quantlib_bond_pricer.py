@@ -8,11 +8,13 @@ from product_definitions import (
 
 class QuantLibBondPricer(PricerBase):
     def __init__(self, bond_static: QuantLibBondStaticBase, method: str = 'discount',
-                 grid_steps: int = 100, convertible_engine_steps: int = 100):
+                 grid_steps: int = 100, convertible_engine_steps: int = 256):
         if not isinstance(bond_static, QuantLibBondStaticBase):
             raise TypeError("Requires QuantLibBondStaticBase derivative.")
         super().__init__(bond_static)
-        self.method, self.grid_steps, self.convertible_engine_steps = method.lower(), grid_steps, convertible_engine_steps
+        self.method = method.lower()
+        self.grid_steps = grid_steps
+        self.convertible_engine_steps = convertible_engine_steps
         self.is_callable = isinstance(bond_static, CallableBondStaticBase)
         self.is_convertible = isinstance(bond_static, ConvertibleBondStaticBase)
 

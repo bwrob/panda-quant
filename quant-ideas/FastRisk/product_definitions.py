@@ -82,7 +82,8 @@ class QuantLibBondStaticBase(ProductStaticBase):
             else: self.calendar_ql = ql.TARGET()
 
         if isinstance(day_count, str):
-            if day_count.lower() == "actualactualisda": self.day_count_ql = ql.ActualActual(ql.ActualActual.ISDA)
+            if day_count == "Actual/Actual (ISDA)": self.day_count_ql = ql.ActualActual(ql.ActualActual.ISDA)
+            elif day_count.lower() == "actualactualisda": self.day_count_ql = ql.ActualActual(ql.ActualActual.ISDA)
             elif day_count.lower() == "actual360": self.day_count_ql = ql.Actual360()
             elif day_count.lower() == "thirty360": self.day_count_ql = ql.Thirty360(ql.Thirty360.USA)
             else: self.day_count_ql = ql.Actual365Fixed()
@@ -127,6 +128,7 @@ class QuantLibBondStaticBase(ProductStaticBase):
         # Remove product_type that are not needed for QuantLibBondStaticBase
         converted_params.pop('product_type', None)
         converted_params.pop('actual_rate_pillars', None)
+        converted_params.pop('module_name', None)
 
         if 'coupon_rate' in converted_params:
             converted_params['coupon_rate'] = float(converted_params['coupon_rate'])
@@ -205,6 +207,7 @@ class CallableBondStaticBase(QuantLibBondStaticBase):
         # Remove product_type that are not needed for CallableBondStaticBase
         converted_params.pop('product_type', None)
         converted_params.pop('actual_rate_pillars', None)
+        converted_params.pop('module_name', None)
 
         if 'coupon_rate' in converted_params:
             converted_params['coupon_rate'] = float(converted_params['coupon_rate'])
@@ -277,6 +280,7 @@ class ConvertibleBondStaticBase(QuantLibBondStaticBase):
         # Remove product_type that are not needed for CallableBondStaticBase
         converted_params.pop('product_type', None)
         converted_params.pop('actual_rate_pillars', None)
+        converted_params.pop('module_name', None)
         
         if 'coupon_rate' in converted_params:
             converted_params['coupon_rate'] = float(converted_params['coupon_rate'])
@@ -339,6 +343,7 @@ class EuropeanOptionStatic(ProductStaticBase):
         converted_params = params.copy()
         # Remove product_type that are not needed for EuropeanOptionStatic
         converted_params.pop('product_type', None)
+        converted_params.pop('module_name', None)
         converted_params.pop('actual_rate_pillars', None)
         
         if 'strike_price' in converted_params:

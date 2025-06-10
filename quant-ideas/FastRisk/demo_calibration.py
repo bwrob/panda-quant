@@ -33,7 +33,7 @@ def generate_instrument_definitions(num_instruments: int, val_date_param: date) 
     np.random.seed(42)
     
     for i in range(num_instruments):
-        instrument_type_choice = i % 3
+        instrument_type_choice = i % 4
         instrument_id_suffix = f"INST_{i+1}"
 
         maturity_years = np.random.randint(2, 11)
@@ -87,24 +87,24 @@ def generate_instrument_definitions(num_instruments: int, val_date_param: date) 
                 "pricer_params": default_option_pricer_params,
                 "tff_config": {"n_train": 128, "n_test": 4, "option_feature_order": 2, "seed": i}
             })
-        # elif instrument_type_choice == 3: # Convertible Bond (S0 dynamic, others fixed for TFF)
-        #     conv_underlying_sym = f"STOCK_{i%10}"
-        #     instrument_id = f"{DEMO_CURRENCY}_{conv_underlying_sym}_CONV_S0_DYN_{instrument_id_suffix}"
-        #     definitions.append({
-        #         "instrument_id": instrument_id,
-        #         "product_type": "ConvertibleBond", "pricing_preference": "TFF",
-        #         "params": {
-        #             'valuation_date': val_date_param.isoformat(), 'issue_date': (val_date_param - relativedelta(months=6)).isoformat(),
-        #             'maturity_date': maturity_dt.isoformat(), 'coupon_rate': coupon,
-        #             'conversion_ratio': 0.5, 'face_value': 0.1,
-        #             'currency': DEMO_CURRENCY, 'index_stub': DEMO_RATE_INDEX_STUB,
-        #             'underlying_symbol': conv_underlying_sym, 'freq': 2
-        #         },
-        #         "pricer_params": conv_s0_dynamic_fixed_params, # Used for fixed params in TFF training
-        #         "tff_config": {"n_train": 64, "n_test": 8, "seed": i,
-        #                        "convertible_tff_market_inputs_as_factors": True
-        #                       }
-        #     })
+        elif instrument_type_choice == 3: # Convertible Bond (S0 dynamic, others fixed for TFF)
+            conv_underlying_sym = f"STOCK_{i%10}"
+            instrument_id = f"{DEMO_CURRENCY}_{conv_underlying_sym}_CONV_S0_DYN_{instrument_id_suffix}"
+            definitions.append({
+            "instrument_id": instrument_id,
+            "product_type": "ConvertibleBond", "pricing_preference": "TFF",
+            "params": {
+                'valuation_date': val_date_param.isoformat(), 'issue_date': (val_date_param - relativedelta(months=6)).isoformat(),
+                'maturity_date': maturity_dt.isoformat(), 'coupon_rate': coupon,
+                'conversion_ratio': 1.0, 'face_value': 1.0,
+                'currency': DEMO_CURRENCY, 'index_stub': DEMO_RATE_INDEX_STUB,
+                'underlying_symbol': conv_underlying_sym, 'freq': 2
+            },
+            "pricer_params": conv_s0_dynamic_fixed_params, # Used for fixed params in TFF training
+            "tff_config": {"n_train": 128, "n_test": 8, "seed": i,
+                   "convertible_tff_market_inputs_as_factors": True
+                  }
+            })
         # elif instrument_type_choice == 4: # MBS Pool
         #     continue # Skip MBS Pool for now
         #     instrument_id = f"{DEMO_CURRENCY}_MBS_POOL_{instrument_id_suffix}"
@@ -178,7 +178,7 @@ def run_calibration_demo(
     with open(instrument_defs_path, 'w') as f:
         json.dump(instrument_definitions, f, indent=4)
     print(f"Instrument definitions saved to {instrument_defs_path}.")
-    
+
     # --- Instrument Processing with Parallel TFF Calibration ---
     print("\\n--- Instrument Processing & TFF Calibration ---")
 
@@ -203,6 +203,13 @@ def run_calibration_demo(
     total_processing_time = time.time() - start_processing_time
 
     print(f"\nTotal instrument processing time: {total_processing_time:.2f} seconds.")
+
+    # --- Save Model Registry ---
+    model_registry_path = os.path.join(output_dir, "model_registry.json")
+    with open(model_registry_path, 'w') as f:
+        json.dump(model_registry, f, indent=4)
+    print(f"Model registry saved to {model_registry_path}.")
+    print(f"Processed {len(model_registry)} instruments in the registry.")
 
     successful_tff_calibrations = 0
     failed_calibrations = 0
@@ -280,7 +287,7 @@ if __name__ == "__main__":
         print(f"QuantLib version: {ql.__version__}")
         start_time = time.time()
         run_calibration_demo(
-            num_instruments_to_generate=2000, # As per user request
+            num_instruments_to_generate=100, # As per user request
             num_workers=24,
             batch_size=32,
             random_seed=42 # For reproducibility

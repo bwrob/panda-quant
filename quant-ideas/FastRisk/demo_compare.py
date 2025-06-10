@@ -271,7 +271,7 @@ def run_comparison_demo(
                 error_msg = str(model_info.get('error_tff_calibration'))
                 if len(error_msg) > 100: error_msg = error_msg[:97] + "..."
                 print(f"{instrument_id:<40} | {'CALIB ERROR':<12} | {'N/A':<10} | {error_msg:<113}")
-                count +=1
+                count += 1
 
     else:
         print("TFF Model Registry not found or is empty.")
@@ -280,7 +280,7 @@ def run_comparison_demo(
 
 if __name__ == "__main__":
     run_comparison_demo(
-        num_instruments_to_generate=3, # Keep low for quick demo runs
+        num_instruments_to_generate=5, # Keep low for quick demo runs
         num_var_scenarios=2000,
         n_tff_domain_scenarios=100,
         n_tff_fitting_samples=50,

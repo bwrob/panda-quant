@@ -332,7 +332,8 @@ class TensorFunctionalFormCalibrate:
         fitted_tff = TensorFunctionalForm(A_sym, b_vec, c_s)
 
         # 4) generate test scenarios & true prices …
-        test_idx = rng_np.choice(full_market_scenarios_for_tff_factors.shape[0], size=n_test, replace=False)
+        test_idx = rng_np.choice(full_market_scenarios_for_tff_factors.shape[0], size=n_test-1, replace=False)
+        test_idx = np.insert(test_idx, 0, 0)  # Ensure the first scenario is always included
         test_tff_inputs_raw = full_market_scenarios_for_tff_factors[test_idx]
         test_worker_args = [(self.product_static_params_for_worker, self.pricer_config_for_worker,
              self.tff_input_raw_factor_names, test_tff_inputs_raw[i],
@@ -362,10 +363,15 @@ class TensorFunctionalFormCalibrate:
                 )
 
         test_pred_prices = fitted_tff(test_inputs_eval)
+        
+        base_value = test_true_prices[0]
+        base_tff_value = fitted_tff(tff_inputs_for_fitting[0]) 
+        
         if test_true_prices.ndim==0 and n_test==1: test_true_prices = np.array([test_true_prices])
         if test_pred_prices.ndim==0 and n_test==1: test_pred_prices = np.array([test_pred_prices])
         if test_true_prices.shape != test_pred_prices.shape: raise ValueError(f"Shape mismatch test prices: true {test_true_prices.shape}, pred {test_pred_prices.shape}")
 
+        
         rmse = np.sqrt(np.mean((test_true_prices - test_pred_prices)**2))
-        return fitted_tff, test_tff_inputs_raw, test_true_prices, rmse, normalization_params
+        return fitted_tff, test_tff_inputs_raw, test_true_prices, rmse, normalization_params, base_value, base_tff_value
 
